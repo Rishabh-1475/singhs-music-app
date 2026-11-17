@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import {
   Play,
   Pause,
@@ -12,6 +13,8 @@ import {
   Clock,
   Heart,
   ChevronRight,
+  RefreshCw,
+  Shuffle,
 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import SongCard from '@/components/SongCard';
@@ -21,14 +24,39 @@ import { Track, Artist } from '@/types/track';
 import { usePlayerStore } from '@/store/playerStore';
 import { TRENDING_FALLBACK_TRACKS } from '@/data/tracks';
 import { getTopArtists } from '@/services/recommendationService';
+import {
+  searchTracks,
+  fetchCategories,
+  fetchArtists,
+  fetchTrendingTracks,
+  MusicCategory,
+} from '@/services/musicService';
 
-interface CategoryData {
-  id: string;
-  title: string;
-  subtitle: string;
-  language: string;
-  tracks: Track[];
+const SEED_POOL = [
+  'Top Hindi',
+  'Arijit Singh',
+  'Bollywood Romance',
+  'Punjabi Pop',
+  'Sidhu Moose Wala',
+  'AP Dhillon',
+  'Lo-Fi Beats',
+  'Workout Hype',
+  'Karan Aujla',
+  'Anirudh Ravichander',
+  'Diljit Dosanjh',
+  'Trending India',
+];
+
+function fisherYatesShuffle<T>(array: T[]): T[] {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
 }
+
+type CategoryData = MusicCategory;
 
 function HeroArtistPlayButton({ trendingTracks }: { trendingTracks: Track[] }) {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -73,11 +101,13 @@ function HeroArtistPlayButton({ trendingTracks }: { trendingTracks: Track[] }) {
 }
 
 export default function HomePage() {
+  const router = useRouter();
   const [categories, setCategories] = useState<CategoryData[]>([]);
   const [trendingTracks, setTrendingTracks] = useState<Track[]>(TRENDING_FALLBACK_TRACKS);
   const [artists, setArtists] = useState<Artist[]>([]);
   const [isLoadingArtists, setIsLoadingArtists] = useState(true);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
 
   // Recommendations state
   const [recommendedTracks, setRecommendedTracks] = useState<Track[]>([]);
@@ -86,6 +116,57 @@ export default function HomePage() {
 
   // Isolate playQueue so HomePage never re-renders when tracks change or play/pause toggles
   const playQueue = usePlayerStore((s) => s.playQueue);
+
+  // 1. Offline Startup Guard: automatically switch to offline vault when opened without internet
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const checkOffline = () => {
+        if (!navigator.onLine) {
+          router.push('/downloads');
+        }
+      };
+      checkOffline();
+      window.addEventListener('offline', checkOffline);
+      return () => window.removeEventListener('offline', checkOffline);
+    }
+  }, [router]);
+
+  // 2. Dynamic Shuffled Home Feed Loader: picks 3 random seeds, fetches, & Fisher-Yates shuffles
+  const loadDynamicShuffledFeed = useCallback(async () => {
+    setIsRefreshingFeed(true);
+    try {
+      const shuffledSeeds = fisherYatesShuffle(SEED_POOL);
+      const chosenSeeds = shuffledSeeds.slice(0, 3);
+
+      const songArrays = await Promise.all(
+        chosenSeeds.map((term) => searchTracks(term, 8))
+      );
+
+      const combined: Track[] = [];
+      const seen = new Set<string>();
+      for (const arr of songArrays) {
+        for (const t of arr) {
+          if (!seen.has(t.id)) {
+            seen.add(t.id);
+            combined.push(t);
+          }
+        }
+      }
+
+      if (combined.length > 0) {
+        const fullyShuffled = fisherYatesShuffle(combined);
+        setTrendingTracks(fullyShuffled);
+      }
+    } catch (err) {
+      console.warn('Failed to shuffle dynamic feed:', err);
+    } finally {
+      setIsRefreshingFeed(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDynamicShuffledFeed();
+  }, [loadDynamicShuffledFeed]);
 
   // Load recommendations based on top played artists in smc_play_history
   useEffect(() => {
@@ -112,17 +193,12 @@ export default function HomePage() {
         const results = await Promise.all(
           topArtists.map(async (artist) => {
             try {
-              const res = await fetch(
-                `/api/music/search?q=${encodeURIComponent(artist)}&limit=10`
-              );
-              if (res.ok) {
-                const json = await res.json();
-                return (json.data || []) as Track[];
-              }
+              const tracks = await searchTracks(artist, 10);
+              return tracks || [];
             } catch (e) {
               console.warn('Failed to fetch recommendations for artist:', artist, e);
+              return [] as Track[];
             }
-            return [] as Track[];
           })
         );
 
@@ -173,31 +249,22 @@ export default function HomePage() {
     };
   }, [trendingTracks]);
 
-  // Load live categories & live artists with fallback guarantee
+  // Load live categories & live artists via client service
   useEffect(() => {
     let isMounted = true;
     async function loadData() {
       try {
-        const [catRes, artistRes] = await Promise.allSettled([
-          fetch('/api/music/categories'),
-          fetch('/api/music/artists'),
+        const [cats, arts] = await Promise.allSettled([
+          fetchCategories(),
+          fetchArtists(),
         ]);
 
-        if (catRes.status === 'fulfilled' && catRes.value.ok) {
-          const data = await catRes.value.json();
-          if (isMounted && data.categories && data.categories.length > 0) {
-            setCategories(data.categories);
-            const firstTracks = data.categories[0]?.tracks;
-            if (firstTracks && firstTracks.length > 0) {
-              setTrendingTracks(firstTracks);
-            }
+        if (isMounted) {
+          if (cats.status === 'fulfilled' && cats.value && cats.value.length > 0) {
+            setCategories(cats.value);
           }
-        }
-
-        if (artistRes.status === 'fulfilled' && artistRes.value.ok) {
-          const aData = await artistRes.value.json();
-          if (isMounted && aData?.data && Array.isArray(aData.data) && aData.data.length > 0) {
-            setArtists(aData.data);
+          if (arts.status === 'fulfilled' && arts.value && arts.value.length > 0) {
+            setArtists(arts.value);
           }
         }
       } catch (err) {
@@ -214,15 +281,9 @@ export default function HomePage() {
 
   const handleArtistClick = async (artistName: string) => {
     try {
-      const res = await fetch(
-        `/api/music/search?q=${encodeURIComponent(artistName)}&limit=15`
-      );
-      if (res.ok) {
-        const data = await res.json();
-        const list = data.data || [];
-        if (list.length > 0) {
-          playQueue(list, 0);
-        }
+      const list = await searchTracks(artistName, 15);
+      if (list && list.length > 0) {
+        playQueue(list, 0);
       }
     } catch (err) {
       console.error(err);
@@ -408,23 +469,35 @@ export default function HomePage() {
           </section>
         </ErrorBoundary>
 
-        {/* 4. Horizontal Grid / Carousel: "Recently Played" */}
-        <ErrorBoundary fallbackTitle="Recently Played Unavailable">
+        {/* 4. Horizontal Grid / Carousel: Dynamic Shuffled Feed */}
+        <ErrorBoundary fallbackTitle="Feed Unavailable">
           <section className="space-y-3 sm:space-y-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Clock size={20} className="text-[#1DB954]" />
-                <h2 className="text-lg sm:text-2xl font-bold text-white tracking-tight">
-                  Recently Played
-                </h2>
+              <div className="flex items-center gap-2.5">
+                <Flame size={22} className="text-emerald-400" />
+                <div>
+                  <h2 className="text-lg sm:text-2xl font-bold text-white tracking-tight">
+                    Fresh Discoveries
+                  </h2>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    Live randomized mix rotated across top chart seeds
+                  </p>
+                </div>
               </div>
-              <span className="text-xs font-bold text-neutral-400 hover:text-white uppercase tracking-wider cursor-pointer">
-                See all
-              </span>
+
+              <button
+                onClick={loadDynamicShuffledFeed}
+                disabled={isRefreshingFeed}
+                className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 active:scale-95 transition-all text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50"
+                title="Shuffle and refresh feed"
+              >
+                <RefreshCw size={13} className={isRefreshingFeed ? 'animate-spin' : ''} />
+                <span>{isRefreshingFeed ? 'Shuffling...' : 'Refresh Feed'}</span>
+              </button>
             </div>
 
             <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 md:gap-4 snap-x snap-mandatory">
-              {trendingTracks.slice(0, 8).map((track) => (
+              {trendingTracks.slice(0, 12).map((track) => (
                 <div
                   key={track.id}
                   className="min-w-[150px] sm:min-w-[170px] md:min-w-0 flex-shrink-0 snap-start"

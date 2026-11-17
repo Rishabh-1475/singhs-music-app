@@ -1,1 +1,1 @@
-{"version":1,"functions":{"/api/music/categories":{},"/api/music/song":{},"/api/music/trending":{},"/api/music/artists":{},"/api/music/search":{}}}
+{"version":1,"functions":{"/playlist/[id]":{}}}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { usePlayerStore } from '@/store/playerStore';
 import { Track } from '@/types/track';
+import { searchTracks } from '@/services/musicService';
 import { logTrackPlay } from '@/services/recommendationService';
 import {
   enableBackgroundMode,
@@ -283,18 +284,15 @@ export function useAudioPlayer() {
         if (isQueueAtEnd && rMode !== 'all' && currentTrack) {
           try {
             const query = currentTrack.artist || 'Top Hits';
-            const res = await fetch(`/api/music/search?q=${encodeURIComponent(query)}&limit=12`);
-            if (res.ok) {
-              const data = await res.json();
-              const fetched: Track[] = (data.data || []).filter(
-                (t: Track) => !queue.some((q) => q.id === t.id)
-              );
-              if (fetched.length > 0) {
-                const tracksToAppend = fetched.slice(0, 5);
-                usePlayerStore.getState().appendQueue(tracksToAppend);
-                playNextTrack();
-                return;
-              }
+            const dataTracks = await searchTracks(query, 12);
+            const fetched: Track[] = dataTracks.filter(
+              (t: Track) => !queue.some((q) => q.id === t.id)
+            );
+            if (fetched.length > 0) {
+              const tracksToAppend = fetched.slice(0, 5);
+              usePlayerStore.getState().appendQueue(tracksToAppend);
+              playNextTrack();
+              return;
             }
           } catch (err) {
             console.warn('Auto recommendation on queue end failed:', err);
