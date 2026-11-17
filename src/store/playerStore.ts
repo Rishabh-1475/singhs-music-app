@@ -1,280 +1,296 @@
 import { create } from 'zustand';
-import { Track, RepeatMode } from '@/types/track';
-import {
-  enableBackgroundMode,
-  disableBackgroundMode,
-  updateBackgroundModeSettings,
-} from '@/services/backgroundAudio';
-import { getSimilarSongs } from '@/services/api';
+
+export interface Song {
+  id: string;
+  name?: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  image?: string;
+  albumArt?: string;
+  genre?: string;
+  duration?: number;
+  downloadUrl?: string;
+  url?: string;
+  [key: string]: any;
+}
+
+let globalAudio: HTMLAudioElement | null = null;
+
+if (typeof window !== 'undefined') {
+  globalAudio = new Audio();
+  globalAudio.preload = 'auto';
+}
+
+export function syncMediaSession(
+  song: Song,
+  onPlay: () => void,
+  onPause: () => void,
+  onNext: () => void,
+  onPrev: () => void
+) {
+  if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
+    const trackName = song.name || song.title || 'Unknown Track';
+    const artistName = song.artist || 'SMC Music';
+    const albumName = song.album || 'Single';
+    const artUrl = song.albumArt || song.image || '/creator.jpg';
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: trackName,
+      artist: artistName,
+      album: albumName,
+      artwork: [
+        { src: artUrl, sizes: '96x96', type: 'image/jpeg' },
+        { src: artUrl, sizes: '192x192', type: 'image/jpeg' },
+        { src: artUrl, sizes: '512x512', type: 'image/jpeg' },
+      ],
+    });
+
+    navigator.mediaSession.setActionHandler('play', onPlay);
+    navigator.mediaSession.setActionHandler('pause', onPause);
+    navigator.mediaSession.setActionHandler('nexttrack', onNext);
+    navigator.mediaSession.setActionHandler('previoustrack', onPrev);
+    navigator.mediaSession.setActionHandler('seekto', (details) => {
+      if (details.seekTime && globalAudio) {
+        globalAudio.currentTime = details.seekTime;
+      }
+    });
+  }
+}
+
+function sanitizeSong(raw: any): Song {
+  const cover = raw.albumArt || raw.image || '/creator.jpg';
+  return {
+    ...raw,
+    id: String(raw.id || Math.random()),
+    name: raw.name || raw.title || 'Unknown Track',
+    artist: raw.artist || raw.singers || 'SMC Music',
+    album: raw.album?.name || raw.album || 'Single',
+    image: cover,
+    albumArt: cover,
+    genre: raw.genre || 'Indian Pop',
+    duration: Number(raw.duration) || 0,
+    downloadUrl: raw.downloadUrl || raw.url || raw.media_url || '',
+  };
+}
+
+export type RepeatMode = 'off' | 'all' | 'one';
 
 interface PlayerState {
-  currentTrack: Track | null;
-  queue: Track[];
-  originalQueue: Track[];
-  upNextQueue: Track[];
-  queueIndex: number;
+  currentTrack: Song | null;
   isPlaying: boolean;
+  queue: Song[];
+  currentIndex: number;
+  progress: number;
+  currentTime: number;
+  duration: number;
   volume: number;
   isMuted: boolean;
-  progress: number;
-  duration: number;
   repeatMode: RepeatMode;
   isShuffled: boolean;
-  showQueue: boolean;
-  showFullScreen: boolean;
-
-  setTrack: (track: Track) => void;
-  playQueue: (tracks: Track[], startIndex?: number) => void;
-  appendQueue: (tracks: Track[]) => void;
-  setUpNextQueue: (tracks: Track[]) => void;
-  fetchSimilarUpNext: (track: Track) => Promise<void>;
+  isQueueOpen: boolean;
+  playTrack: (song: any, queueList?: any[]) => void;
+  playQueue: (songs: any[], startIndex?: number) => void;
   togglePlay: () => void;
-  setIsPlaying: (v: boolean) => void;
+  playNext: () => void;
+  playPrev: () => void;
   nextTrack: () => void;
   prevTrack: () => void;
-  playNextTrack: () => void;
-  playPreviousTrack: () => void;
-  setVolume: (v: number) => void;
+  seek: (seconds: number) => void;
+  setVolume: (vol: number) => void;
   toggleMute: () => void;
-  setProgress: (v: number) => void;
-  setDuration: (v: number) => void;
+  setProgress: (prog: number) => void;
   toggleRepeat: () => void;
   toggleShuffle: () => void;
   toggleQueue: () => void;
-  toggleFullScreen: () => void;
+  clearQueue: () => void;
+  [key: string]: any;
 }
 
-function shuffleArray<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
+export const usePlayerStore = create<PlayerState>((set, get) => {
+  if (typeof window !== 'undefined' && globalAudio) {
+    globalAudio.onended = () => {
+      const { repeatMode, playNext, currentTrack, playTrack, queue } = get();
+      if (repeatMode === 'one' && currentTrack) {
+        playTrack(currentTrack, queue);
+      } else {
+        playNext();
+      }
+    };
+
+    globalAudio.ontimeupdate = () => {
+      if (!globalAudio) return;
+      const cur = globalAudio.currentTime || 0;
+      const dur = globalAudio.duration || 1;
+      set({
+        currentTime: cur,
+        duration: dur,
+        progress: (cur / dur) * 100,
+      });
+    };
   }
-  return a;
-}
 
-function loadVolume(): number {
-  if (typeof window === 'undefined') return 0.7;
-  const saved = localStorage.getItem('sp-volume');
-  return saved ? parseFloat(saved) : 0.7;
-}
-
-export const usePlayerStore = create<PlayerState>((set, get) => ({
-  currentTrack: null,
-  queue: [],
-  originalQueue: [],
-  upNextQueue: [],
-  queueIndex: -1,
-  isPlaying: false,
-  volume: loadVolume(),
-  isMuted: false,
-  progress: 0,
-  duration: 0,
-  repeatMode: 'off',
-  isShuffled: false,
-  showQueue: false,
-  showFullScreen: false,
-
-  setUpNextQueue: (tracks) => set({ upNextQueue: tracks }),
-
-  fetchSimilarUpNext: async (track) => {
-    if (!track?.id) return;
-    try {
-      const similar = await getSimilarSongs(track.id, track.artist);
-      const { queue, currentTrack } = get();
-      const currentId = currentTrack?.id;
-      const filtered = similar.filter(
-        (t) => t.id !== currentId && !queue.some((q) => q.id === t.id)
-      );
-      set({ upNextQueue: filtered.slice(0, 10) });
-    } catch (err) {
-      console.warn('Failed to pre-fetch similar up-next tracks:', err);
-    }
-  },
-
-  setTrack: (track) => {
-    enableBackgroundMode(track);
-    set({
-      currentTrack: track,
-      queue: [track],
-      originalQueue: [track],
-      queueIndex: 0,
-      isPlaying: true,
-      progress: 0,
-      duration: 0,
-    });
-    get().fetchSimilarUpNext(track);
-  },
-
-  playQueue: (tracks, startIndex = 0) => {
-    if (!tracks || tracks.length === 0) return;
-    const { isShuffled } = get();
-    const q = isShuffled ? shuffleArray(tracks) : tracks;
-    const idx = isShuffled
-      ? q.findIndex((t) => t.id === tracks[startIndex].id)
-      : startIndex;
-    const targetTrack = q[idx] || tracks[0];
-    enableBackgroundMode(targetTrack);
-    set({
-      queue: q,
-      originalQueue: tracks,
-      queueIndex: idx,
-      currentTrack: targetTrack,
-      isPlaying: true,
-      progress: 0,
-      duration: 0,
-    });
-    if (targetTrack) {
-      get().fetchSimilarUpNext(targetTrack);
-    }
-  },
-
-  appendQueue: (newTracks) => {
-    const { queue, originalQueue } = get();
-    set({
-      queue: [...queue, ...newTracks],
-      originalQueue: [...originalQueue, ...newTracks],
-    });
-  },
-
-  togglePlay: () => {
-    const nextPlaying = !get().isPlaying;
-    if (nextPlaying) {
-      enableBackgroundMode(get().currentTrack);
-    } else {
-      disableBackgroundMode();
-    }
-    set({ isPlaying: nextPlaying });
-  },
-
-  setIsPlaying: (v) => {
-    if (v) {
-      enableBackgroundMode(get().currentTrack);
-    } else {
-      disableBackgroundMode();
-    }
-    set({ isPlaying: v });
-  },
-
-  nextTrack: () => {
-    const { queue, originalQueue, queueIndex, repeatMode, upNextQueue } = get();
-
-    // 1. If queue has remaining songs, play next one
-    if (queue.length > 0 && queueIndex + 1 < queue.length) {
-      const nextIdx = queueIndex + 1;
-      const nextSong = queue[nextIdx];
-      updateBackgroundModeSettings(nextSong);
-      set({
-        queueIndex: nextIdx,
-        currentTrack: nextSong,
-        isPlaying: true,
-        progress: 0,
-        duration: 0,
-      });
-      get().fetchSimilarUpNext(nextSong);
-      return;
-    }
-
-    // 2. If at end of queue and repeat 'all' is active, loop back to start
-    if (repeatMode === 'all' && queue.length > 0) {
-      const nextSong = queue[0];
-      updateBackgroundModeSettings(nextSong);
-      set({
-        queueIndex: 0,
-        currentTrack: nextSong,
-        isPlaying: true,
-        progress: 0,
-        duration: 0,
-      });
-      get().fetchSimilarUpNext(nextSong);
-      return;
-    }
-
-    // 3. Continuous Algorithmic Radio: Transition seamlessly to upNextQueue
-    if (upNextQueue.length > 0) {
-      const nextSong = upNextQueue[0];
-      const remainingUpNext = upNextQueue.slice(1);
-      const updatedQueue = [...queue, nextSong];
-      const updatedOriginal = [...originalQueue, nextSong];
-      updateBackgroundModeSettings(nextSong);
-      set({
-        queue: updatedQueue,
-        originalQueue: updatedOriginal,
-        queueIndex: updatedQueue.length - 1,
-        currentTrack: nextSong,
-        upNextQueue: remainingUpNext,
-        isPlaying: true,
-        progress: 0,
-        duration: 0,
-      });
-      get().fetchSimilarUpNext(nextSong);
-      return;
-    }
-
-    // 4. No more tracks available
-    disableBackgroundMode();
-    set({ isPlaying: false });
-  },
-
-  prevTrack: () => {
-    const { queue, queueIndex, progress } = get();
+  const handlePlayNext = () => {
+    const { queue, currentIndex, playTrack, isShuffled, repeatMode } = get();
     if (queue.length === 0) return;
-    if (progress > 3) {
-      set({ progress: 0 });
+
+    if (isShuffled) {
+      const randomIndex = Math.floor(Math.random() * queue.length);
+      playTrack(queue[randomIndex], queue);
       return;
     }
-    let prev = queueIndex - 1;
-    if (prev < 0) prev = queue.length - 1;
-    const prevSong = queue[prev];
-    updateBackgroundModeSettings(prevSong);
-    set({
-      queueIndex: prev,
-      currentTrack: prevSong,
-      isPlaying: true,
-      progress: 0,
-      duration: 0,
-    });
-  },
 
-  playNextTrack: () => {
-    get().nextTrack();
-  },
-
-  playPreviousTrack: () => {
-    get().prevTrack();
-  },
-
-  setVolume: (v) => {
-    if (typeof window !== 'undefined') localStorage.setItem('sp-volume', String(v));
-    set({ volume: v, isMuted: v === 0 });
-  },
-
-  toggleMute: () => set((s) => ({ isMuted: !s.isMuted })),
-  setProgress: (v) => set({ progress: v }),
-  setDuration: (v) => set({ duration: v }),
-
-  toggleRepeat: () =>
-    set((s) => ({
-      repeatMode:
-        s.repeatMode === 'off' ? 'all' : s.repeatMode === 'all' ? 'one' : 'off',
-    })),
-
-  toggleShuffle: () => {
-    const { isShuffled, originalQueue, queue, currentTrack } = get();
-    if (isShuffled) {
-      const idx = currentTrack
-        ? originalQueue.findIndex((t) => t.id === currentTrack.id)
-        : 0;
-      set({ queue: originalQueue, queueIndex: idx, isShuffled: false });
-    } else {
-      const shuffled = shuffleArray(queue);
-      const idx = currentTrack
-        ? shuffled.findIndex((t) => t.id === currentTrack.id)
-        : 0;
-      set({ queue: shuffled, queueIndex: idx, isShuffled: true });
+    const nextIndex = currentIndex + 1;
+    if (nextIndex >= queue.length) {
+      if (repeatMode === 'all') {
+        playTrack(queue[0], queue);
+      } else {
+        set({ isPlaying: false });
+      }
+      return;
     }
-  },
 
-  toggleQueue: () => set((s) => ({ showQueue: !s.showQueue })),
-  toggleFullScreen: () => set((s) => ({ showFullScreen: !s.showFullScreen })),
-}));
+    playTrack(queue[nextIndex], queue);
+  };
+
+  const handlePlayPrev = () => {
+    const { queue, currentIndex, playTrack } = get();
+    if (queue.length === 0) return;
+
+    const prevIndex = (currentIndex - 1 + queue.length) % queue.length;
+    playTrack(queue[prevIndex], queue);
+  };
+
+  return {
+    currentTrack: null,
+    isPlaying: false,
+    queue: [],
+    currentIndex: -1,
+    progress: 0,
+    currentTime: 0,
+    duration: 0,
+    volume: 1,
+    isMuted: false,
+    repeatMode: 'off',
+    isShuffled: false,
+    isQueueOpen: false,
+
+    playTrack: (rawSong: any, rawQueue: any[] = []) => {
+      if (!globalAudio || !rawSong) return;
+
+      const song = sanitizeSong(rawSong);
+      const queue = rawQueue.length > 0 ? rawQueue.map(sanitizeSong) : [song];
+      const index = queue.findIndex((t) => t.id === song.id);
+
+      set({
+        currentTrack: song,
+        isPlaying: true,
+        queue: queue,
+        currentIndex: index !== -1 ? index : 0,
+        progress: 0,
+        currentTime: 0,
+      });
+
+      if (song.downloadUrl) {
+        globalAudio.src = song.downloadUrl;
+        globalAudio.play().catch((err) => console.error("Audio playback error:", err));
+      }
+
+      syncMediaSession(
+        song,
+        () => get().togglePlay(),
+        () => get().togglePlay(),
+        () => handlePlayNext(),
+        () => handlePlayPrev()
+      );
+    },
+
+    playQueue: (songs: any[], startIndex = 0) => {
+      if (!songs || songs.length === 0) return;
+      const targetIndex = startIndex >= 0 && startIndex < songs.length ? startIndex : 0;
+      get().playTrack(songs[targetIndex], songs);
+    },
+
+    togglePlay: () => {
+      if (!globalAudio || !get().currentTrack) return;
+
+      if (get().isPlaying) {
+        globalAudio.pause();
+        set({ isPlaying: false });
+        if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'paused';
+        }
+      } else {
+        globalAudio.play().catch((err) => console.error("Playback resume error:", err));
+        set({ isPlaying: true });
+        if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'playing';
+        }
+      }
+    },
+
+    playNext: handlePlayNext,
+    nextTrack: handlePlayNext,
+
+    playPrev: handlePlayPrev,
+    prevTrack: handlePlayPrev,
+
+    seek: (seconds: number) => {
+      if (!globalAudio) return;
+      globalAudio.currentTime = seconds;
+      set({ currentTime: seconds });
+    },
+
+    setVolume: (vol: number) => {
+      const clamped = Math.max(0, Math.min(1, vol));
+      if (globalAudio) globalAudio.volume = clamped;
+      set({ volume: clamped, isMuted: clamped === 0 });
+    },
+
+    toggleMute: () => {
+      if (!globalAudio) return;
+      const { isMuted, volume } = get();
+      if (isMuted) {
+        globalAudio.volume = volume || 0.5;
+        set({ isMuted: false });
+      } else {
+        globalAudio.volume = 0;
+        set({ isMuted: true });
+      }
+    },
+
+    setProgress: (prog: number) => {
+      if (!globalAudio || !globalAudio.duration) return;
+      const targetSec = (prog / 100) * globalAudio.duration;
+      globalAudio.currentTime = targetSec;
+      set({ progress: prog, currentTime: targetSec });
+    },
+
+    toggleRepeat: () => {
+      const modes: RepeatMode[] = ['off', 'all', 'one'];
+      const current = get().repeatMode;
+      const next = modes[(modes.indexOf(current) + 1) % modes.length];
+      set({ repeatMode: next });
+    },
+
+    toggleShuffle: () => {
+      set((state) => ({ isShuffled: !state.isShuffled }));
+    },
+
+    toggleQueue: () => {
+      set((state) => ({ isQueueOpen: !state.isQueueOpen }));
+    },
+
+    clearQueue: () => {
+      if (globalAudio) globalAudio.pause();
+      set({
+        currentTrack: null,
+        isPlaying: false,
+        queue: [],
+        currentIndex: -1,
+        progress: 0,
+        currentTime: 0,
+      });
+    },
+  };
+});
