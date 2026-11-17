@@ -1,12 +1,13 @@
 'use client';
 
 import Image from 'next/image';
-import { X, Play, Music2 } from 'lucide-react';
+import { X, Play, Music2, Radio, Sparkles } from 'lucide-react';
 import { usePlayerStore } from '@/store/playerStore';
 
 export default function QueuePanel() {
   const queue = usePlayerStore((s) => s.queue);
   const queueIndex = usePlayerStore((s) => s.queueIndex);
+  const upNextQueue = usePlayerStore((s) => s.upNextQueue);
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const showQueue = usePlayerStore((s) => s.showQueue);
   const toggleQueue = usePlayerStore((s) => s.toggleQueue);
@@ -63,49 +64,104 @@ export default function QueuePanel() {
         </div>
       )}
 
-      {/* Up Next List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-1">
-        <p className="mb-2 text-xs font-bold text-neutral-400 uppercase tracking-wider">
-          Next Up
-        </p>
-        {queue.slice(queueIndex + 1).length > 0 ? (
-          queue.slice(queueIndex + 1).map((track, i) => (
-            <button
-              key={`${track.id}-queue-${i}`}
-              onClick={() => {
-                const realIdx = queueIndex + 1 + i;
-                if (currentTrack?.id === track.id && realIdx === queueIndex) {
-                  togglePlay();
-                } else {
-                  playQueue(queue, realIdx);
-                }
-              }}
-              className="flex w-full items-center gap-3 rounded-md p-2 text-left transition-colors hover:bg-[#282828] group"
-            >
-              <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-neutral-800 shadow-sm">
-                <Image
-                  src={
-                    track.albumArt ||
-                    track.artwork ||
-                    'https://picsum.photos/seed/song/300/300'
-                  }
-                  alt={track.title}
-                  fill
-                  sizes="40px"
-                  className="object-cover"
-                />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-white group-hover:text-[#1db954]">
-                  {track.title}
-                </p>
-                <p className="truncate text-xs text-neutral-400">
-                  {track.artist}
-                </p>
-              </div>
-            </button>
-          ))
-        ) : (
+      {/* Up Next & Song Radio Lists */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Next in Current Queue */}
+        {queue.slice(queueIndex + 1).length > 0 && (
+          <div>
+            <p className="mb-2 text-xs font-bold text-neutral-400 uppercase tracking-wider">
+              Next Up
+            </p>
+            <div className="space-y-1">
+              {queue.slice(queueIndex + 1).map((track, i) => (
+                <button
+                  key={`${track.id}-queue-${i}`}
+                  onClick={() => {
+                    const realIdx = queueIndex + 1 + i;
+                    if (currentTrack?.id === track.id && realIdx === queueIndex) {
+                      togglePlay();
+                    } else {
+                      playQueue(queue, realIdx);
+                    }
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors hover:bg-[#282828] group"
+                >
+                  <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg bg-neutral-800 shadow-sm">
+                    <Image
+                      src={
+                        track.albumArt ||
+                        track.artwork ||
+                        track.image ||
+                        'https://picsum.photos/seed/song/300/300'
+                      }
+                      alt={track.title}
+                      fill
+                      sizes="40px"
+                      className="object-cover"
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-white group-hover:text-emerald-400">
+                      {track.title}
+                    </p>
+                    <p className="truncate text-xs text-neutral-400">
+                      {track.artist}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Algorithmic Up Next / Song Radio */}
+        {upNextQueue.length > 0 && (
+          <div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <Sparkles size={13} className="text-emerald-400" />
+              <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                Similar Songs (Autoplay)
+              </p>
+            </div>
+            <div className="space-y-1">
+              {upNextQueue.map((track, i) => (
+                <button
+                  key={`${track.id}-upnext-${i}`}
+                  onClick={() => {
+                    // Instantly play this recommended track
+                    playQueue([track, ...upNextQueue.filter((t) => t.id !== track.id)], 0);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors hover:bg-emerald-500/10 border border-transparent hover:border-emerald-500/20 group"
+                >
+                  <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg bg-neutral-800 shadow-sm">
+                    <Image
+                      src={
+                        track.albumArt ||
+                        track.artwork ||
+                        track.image ||
+                        'https://picsum.photos/seed/song/300/300'
+                      }
+                      alt={track.title}
+                      fill
+                      sizes="40px"
+                      className="object-cover"
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-white group-hover:text-emerald-400">
+                      {track.title}
+                    </p>
+                    <p className="truncate text-xs text-neutral-400">
+                      {track.artist}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {queue.slice(queueIndex + 1).length === 0 && upNextQueue.length === 0 && (
           <div className="py-8 text-center text-neutral-500 text-xs">
             No upcoming songs in the queue.
           </div>

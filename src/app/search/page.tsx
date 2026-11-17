@@ -92,7 +92,7 @@ export default function SearchPage() {
     setIsLoading(true);
     debounceTimer.current = setTimeout(() => {
       executeSearch(val);
-    }, 300);
+    }, 250);
   };
 
   const handleSearchClear = () => {

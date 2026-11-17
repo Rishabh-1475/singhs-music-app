@@ -95,7 +95,7 @@ export default function Navbar({
       if (val.trim()) {
         router.push(`/search?q=${encodeURIComponent(val.trim())}`);
       }
-    }, 300);
+    }, 250);
   };
 
   const handleClear = () => {

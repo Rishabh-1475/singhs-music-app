@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
@@ -46,6 +46,36 @@ const SEED_POOL = [
   'Anirudh Ravichander',
   'Diljit Dosanjh',
   'Trending India',
+];
+
+const MOOD_CATEGORIES = [
+  {
+    id: 'all',
+    title: 'All Moods',
+    label: 'All Hits',
+    icon: Sparkles,
+  },
+  {
+    id: 'workout',
+    title: 'Gym / Workout',
+    subtitle: 'High-BPM workout, Gym motivation & Punjabi hype',
+    query: 'workout hindi gym punjabi',
+    icon: Flame,
+  },
+  {
+    id: 'focus',
+    title: 'Deep Focus',
+    subtitle: 'Lo-Fi, chill instrumental & ambient study tracks',
+    query: 'lofi hindi chill acoustic',
+    icon: Radio,
+  },
+  {
+    id: 'podcasts',
+    title: 'Podcasts & Talk',
+    subtitle: 'Top Indian talk, stories & inspirational audio',
+    query: 'podcast hindi talk stories audio',
+    icon: Clock,
+  },
 ];
 
 function fisherYatesShuffle<T>(array: T[]): T[] {
@@ -112,6 +142,7 @@ function HeroArtistPlayButton({ trendingTracks }: { trendingTracks: Track[] }) {
 export default function HomePage() {
   const router = useRouter();
   const [categories, setCategories] = useState<CategoryData[]>([]);
+  const [activeMood, setActiveMood] = useState<string>('all');
   const [trendingTracks, setTrendingTracks] = useState<Track[]>(TRENDING_FALLBACK_TRACKS);
   const [artists, setArtists] = useState<Artist[]>([]);
   const [isLoadingArtists, setIsLoadingArtists] = useState(true);
@@ -299,6 +330,20 @@ export default function HomePage() {
     }
   };
 
+  const displayedCategories = useMemo(() => {
+    if (activeMood === 'all') return categories;
+    const filtered = categories.filter((c) => c.id === activeMood);
+    return filtered.length > 0 ? filtered : categories;
+  }, [categories, activeMood]);
+
+  const handleShuffleCategory = (catId: string) => {
+    setCategories((prev) =>
+      prev.map((cat) =>
+        cat.id === catId ? { ...cat, tracks: fisherYatesShuffle(cat.tracks) } : cat
+      )
+    );
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#0D0F11]">
       {/* Top Navbar */}
@@ -361,6 +406,28 @@ export default function HomePage() {
             </div>
           </div>
         </section>
+
+        {/* Dynamic Mood Categories & Filter Pills */}
+        <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-1 -mx-4 px-4 sm:mx-0 sm:px-0">
+          {MOOD_CATEGORIES.map((mood) => {
+            const Icon = mood.icon;
+            const isSelected = activeMood === mood.id;
+            return (
+              <button
+                key={mood.id}
+                onClick={() => setActiveMood(mood.id)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold tracking-wide whitespace-nowrap transition-all duration-200 cursor-pointer shadow-sm ${
+                  isSelected
+                    ? 'bg-emerald-500 text-black shadow-emerald-500/25 scale-105'
+                    : 'bg-[#16191E] text-neutral-300 hover:text-white border border-[#22262F] hover:border-neutral-500 hover:bg-[#1f242d]'
+                }`}
+              >
+                <Icon size={14} className={isSelected ? 'text-black' : 'text-emerald-400'} />
+                <span>{mood.title}</span>
+              </button>
+            );
+          })}
+        </div>
 
         {/* 2. Large Featured Artist Spotlight Card (Wiz Khalifa / Beyond Time reference) */}
         <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#0c1410] via-[#121c16] to-[#16191E] border border-[#22262F] p-6 sm:p-10 shadow-2xl">
@@ -587,9 +654,9 @@ export default function HomePage() {
           </section>
         </ErrorBoundary>
 
-        {/* 5. Dynamic Shelves (Hindi, English, Tamil, Punjabi, Lo-Fi) */}
+        {/* 5. Dynamic Mood & Genre Shelves (Gym/Workout, Deep Focus, Podcasts, Hindi, Punjabi, English) */}
         <ErrorBoundary fallbackTitle="Shelves Unavailable">
-          {categories.map((cat) => (
+          {displayedCategories.map((cat) => (
             <section key={cat.id} className="space-y-3 sm:space-y-4">
               <div className="flex items-end justify-between">
                 <div>
@@ -600,15 +667,25 @@ export default function HomePage() {
                     {cat.subtitle}
                   </p>
                 </div>
-                <span className="text-xs font-bold text-neutral-400 hover:text-white uppercase tracking-wider cursor-pointer hidden sm:block">
-                  Show all
-                </span>
+                <div className="flex items-center gap-2.5">
+                  <button
+                    onClick={() => handleShuffleCategory(cat.id)}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white border border-white/5 text-[11px] font-semibold transition-colors cursor-pointer"
+                    title="Shuffle songs in this collection"
+                  >
+                    <Shuffle size={12} className="text-emerald-400" />
+                    <span>Shuffle</span>
+                  </button>
+                  <span className="text-xs font-bold text-neutral-400 hover:text-white uppercase tracking-wider cursor-pointer hidden sm:block">
+                    Show all
+                  </span>
+                </div>
               </div>
 
               <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 md:gap-4 snap-x snap-mandatory">
-                {cat.tracks.slice(0, 8).map((track) => (
+                {cat.tracks.slice(0, 10).map((track) => (
                   <div
-                    key={track.id}
+                    key={`${cat.id}-${track.id}`}
                     className="min-w-[150px] sm:min-w-[170px] md:min-w-0 flex-shrink-0 snap-start"
                   >
                     <SongCard

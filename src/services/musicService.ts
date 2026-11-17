@@ -1,98 +1,63 @@
 import { Track, Artist } from '@/types/track';
 import { TRENDING_FALLBACK_TRACKS } from '@/data/tracks';
-import { searchJioSaavn, getJioSaavnSong } from '@/lib/saavn';
+import { getJioSaavnSong } from '@/lib/saavn';
+import { searchTracks, getSimilarSongs, extractHighResArtwork } from './api';
+
+export { searchTracks, getSimilarSongs, extractHighResArtwork };
 
 export interface MusicCategory {
   id: string;
   title: string;
   subtitle: string;
   language: string;
+  query: string;
   tracks: Track[];
 }
 
-// 1. Search Tracks (saavn.dev primary with searchJioSaavn & fallback)
-export async function searchTracks(query: string, limit = 25): Promise<Track[]> {
-  if (!query || !query.trim()) return [];
-
-  // Try saavn.dev first
-  try {
-    const res = await fetch(
-      `https://saavn.dev/api/search/songs?query=${encodeURIComponent(query.trim())}&page=1&limit=${limit}`,
-      { headers: { Accept: 'application/json' } }
-    );
-    if (res.ok) {
-      const json = await res.json();
-      const results = json?.data?.results || json?.results || [];
-      if (Array.isArray(results) && results.length > 0) {
-        return results.map((item: any) => {
-          const audioSrc =
-            item.downloadUrl?.[4]?.url ||
-            item.downloadUrl?.[3]?.url ||
-            item.downloadUrl?.[0]?.url ||
-            '';
-          const art =
-            item.image?.[2]?.url ||
-            item.image?.[1]?.url ||
-            item.image?.[0]?.url ||
-            'https://picsum.photos/seed/music/500/500';
-
-          return {
-            id: String(item.id || `saavn-${Math.random().toString(36).substring(2, 9)}`),
-            title: item.name || item.title || 'Unknown Track',
-            artist:
-              item.artists?.primary?.map((a: any) => a.name).join(', ') ||
-              item.primaryArtists ||
-              'Unknown Artist',
-            album: item.album?.name || 'Single',
-            albumArt: art,
-            artwork: art,
-            image: art,
-            url: audioSrc,
-            audioUrl: audioSrc,
-            downloadUrl: audioSrc,
-            duration: Number(item.duration) || 0,
-            genre: item.language || 'Music',
-          };
-        });
-      }
-    }
-  } catch (err) {
-    console.warn('saavn.dev search fallback:', err);
+export function fisherYatesShuffle<T>(array: T[]): T[] {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
   }
-
-  // Secondary fallback: JioSaavn direct
-  try {
-    const fallbackTracks = await searchJioSaavn(query.trim(), limit);
-    if (fallbackTracks.length > 0) return fallbackTracks;
-  } catch (err) {
-    console.warn('searchJioSaavn fallback:', err);
-  }
-
-  // Tertiary fallback: match query against bundled offline tracks
-  const lower = query.toLowerCase();
-  const matched = TRENDING_FALLBACK_TRACKS.filter(
-    (t) =>
-      t.title.toLowerCase().includes(lower) ||
-      t.artist.toLowerCase().includes(lower) ||
-      (t.album && t.album.toLowerCase().includes(lower))
-  );
-  return matched.length > 0 ? matched : TRENDING_FALLBACK_TRACKS.slice(0, limit);
+  return result;
 }
 
 // 2. Fetch Trending Tracks
 export async function fetchTrendingTracks(): Promise<Track[]> {
   try {
     const tracks = await searchTracks('Top Hindi Trending', 25);
-    if (tracks.length > 0) return tracks;
+    if (tracks.length > 0) return fisherYatesShuffle(tracks);
   } catch (e) {
     console.warn('Failed to fetch trending tracks:', e);
   }
-  return TRENDING_FALLBACK_TRACKS;
+  return fisherYatesShuffle(TRENDING_FALLBACK_TRACKS);
 }
 
-// 3. Fetch Categories
+// 3. Fetch Dynamic Mood & Language Categories
 export async function fetchCategories(): Promise<MusicCategory[]> {
   const categoryConfigs = [
+    {
+      id: 'workout',
+      title: 'Gym / Workout',
+      subtitle: 'High-BPM workout, Gym motivation & Punjabi hype',
+      language: 'Workout',
+      query: 'workout hindi gym punjabi',
+    },
+    {
+      id: 'focus',
+      title: 'Deep Focus',
+      subtitle: 'Lo-Fi, chill instrumental & ambient study tracks',
+      language: 'Focus',
+      query: 'lofi hindi chill acoustic',
+    },
+    {
+      id: 'podcasts',
+      title: 'Podcasts & Talk',
+      subtitle: 'Top Indian talk, stories & inspirational audio',
+      language: 'Stories',
+      query: 'podcast hindi talk stories audio',
+    },
     {
       id: 'hindi',
       title: 'Top Hindi Hits',
@@ -101,32 +66,18 @@ export async function fetchCategories(): Promise<MusicCategory[]> {
       query: 'Top Hindi Songs',
     },
     {
-      id: 'english',
-      title: 'Global English Hits',
-      subtitle: 'International pop, rock & chart-topping favorites',
-      language: 'English',
-      query: 'Billboard Hot 100',
-    },
-    {
-      id: 'tamil',
-      title: 'Tamil Kollywood Hits',
-      subtitle: 'Anirudh, AR Rahman, Yuvan & Tamil anthems',
-      language: 'Tamil',
-      query: 'Tamil Top Hits',
-    },
-    {
       id: 'punjabi',
-      title: 'Punjabi Pop & Beats',
+      title: 'Punjabi Pop & Bangers',
       subtitle: 'Diljit Dosanjh, Karan Aujla, AP Dhillon & bangers',
       language: 'Punjabi',
       query: 'Punjabi Hits',
     },
     {
-      id: 'lofi',
-      title: 'Midnight Lo-Fi & Chill',
-      subtitle: 'Mellow acoustic, soothing Indian & Western lo-fi',
-      language: 'Lo-Fi',
-      query: 'Bollywood Lofi',
+      id: 'english',
+      title: 'Global English Hits',
+      subtitle: 'International pop, rock & chart-topping favorites',
+      language: 'English',
+      query: 'Billboard Hot 100',
     },
   ];
 
@@ -134,13 +85,18 @@ export async function fetchCategories(): Promise<MusicCategory[]> {
     const results = await Promise.all(
       categoryConfigs.map(async (cat, idx) => {
         try {
-          const tracks = await searchTracks(cat.query, 10);
+          const tracks = await searchTracks(cat.query, 12);
+          const tracksToUse =
+            tracks.length > 0
+              ? fisherYatesShuffle(tracks)
+              : fisherYatesShuffle(TRENDING_FALLBACK_TRACKS.slice(idx * 2, idx * 2 + 6));
           return {
             id: cat.id,
             title: cat.title,
             subtitle: cat.subtitle,
             language: cat.language,
-            tracks: tracks.length > 0 ? tracks : TRENDING_FALLBACK_TRACKS.slice(idx * 2, idx * 2 + 5),
+            query: cat.query,
+            tracks: tracksToUse,
           };
         } catch {
           return {
@@ -148,7 +104,8 @@ export async function fetchCategories(): Promise<MusicCategory[]> {
             title: cat.title,
             subtitle: cat.subtitle,
             language: cat.language,
-            tracks: TRENDING_FALLBACK_TRACKS.slice(idx * 2, idx * 2 + 5),
+            query: cat.query,
+            tracks: fisherYatesShuffle(TRENDING_FALLBACK_TRACKS.slice(idx * 2, idx * 2 + 6)),
           };
         }
       })
@@ -160,7 +117,8 @@ export async function fetchCategories(): Promise<MusicCategory[]> {
       title: cat.title,
       subtitle: cat.subtitle,
       language: cat.language,
-      tracks: TRENDING_FALLBACK_TRACKS.slice(idx * 2, idx * 2 + 5),
+      query: cat.query,
+      tracks: fisherYatesShuffle(TRENDING_FALLBACK_TRACKS.slice(idx * 2, idx * 2 + 6)),
     }));
   }
 }

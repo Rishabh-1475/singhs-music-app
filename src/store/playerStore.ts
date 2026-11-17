@@ -6,6 +6,7 @@ import {
   updateBackgroundModeSettings,
 } from '@/services/backgroundAudio';
 import { useAuthStore } from '@/store/authStore';
+import { getSimilarSongs } from '@/services/api';
 
 function checkAuthGate(): boolean {
   const user = useAuthStore.getState().user;
@@ -21,6 +22,7 @@ interface PlayerState {
   currentTrack: Track | null;
   queue: Track[];
   originalQueue: Track[];
+  upNextQueue: Track[];
   queueIndex: number;
   isPlaying: boolean;
   volume: number;
@@ -35,6 +37,8 @@ interface PlayerState {
   setTrack: (track: Track) => void;
   playQueue: (tracks: Track[], startIndex?: number) => void;
   appendQueue: (tracks: Track[]) => void;
+  setUpNextQueue: (tracks: Track[]) => void;
+  fetchSimilarUpNext: (track: Track) => Promise<void>;
   togglePlay: () => void;
   setIsPlaying: (v: boolean) => void;
   nextTrack: () => void;
@@ -70,6 +74,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentTrack: null,
   queue: [],
   originalQueue: [],
+  upNextQueue: [],
   queueIndex: -1,
   isPlaying: false,
   volume: loadVolume(),
@@ -81,6 +86,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   showQueue: false,
   showFullScreen: false,
 
+  setUpNextQueue: (tracks) => set({ upNextQueue: tracks }),
+
+  fetchSimilarUpNext: async (track) => {
+    if (!track?.id) return;
+    try {
+      const similar = await getSimilarSongs(track.id, track.artist);
+      const { queue, currentTrack } = get();
+      const currentId = currentTrack?.id;
+      const filtered = similar.filter(
+        (t) => t.id !== currentId && !queue.some((q) => q.id === t.id)
+      );
+      set({ upNextQueue: filtered.slice(0, 10) });
+    } catch (err) {
+      console.warn('Failed to pre-fetch similar up-next tracks:', err);
+    }
+  },
+
   setTrack: (track) => {
     if (!checkAuthGate()) {
       disableBackgroundMode();
@@ -88,7 +110,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       return;
     }
     enableBackgroundMode(track);
-    set({ currentTrack: track, isPlaying: true, progress: 0, duration: 0 });
+    set({
+      currentTrack: track,
+      queue: [track],
+      originalQueue: [track],
+      queueIndex: 0,
+      isPlaying: true,
+      progress: 0,
+      duration: 0,
+    });
+    get().fetchSimilarUpNext(track);
   },
 
   playQueue: (tracks, startIndex = 0) => {
@@ -98,6 +129,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         currentTrack: null,
         isPlaying: false,
         queue: [],
+        originalQueue: [],
+        upNextQueue: [],
         queueIndex: -1,
         progress: 0,
         duration: 0,
@@ -109,7 +142,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const idx = isShuffled
       ? q.findIndex((t) => t.id === tracks[startIndex].id)
       : startIndex;
-    const targetTrack = q[idx];
+    const targetTrack = q[idx] || tracks[0];
     enableBackgroundMode(targetTrack);
     set({
       queue: q,
@@ -120,6 +153,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       progress: 0,
       duration: 0,
     });
+    if (targetTrack) {
+      get().fetchSimilarUpNext(targetTrack);
+    }
   },
 
   appendQueue: (newTracks) => {
@@ -160,26 +196,63 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   nextTrack: () => {
-    const { queue, queueIndex, repeatMode } = get();
-    if (queue.length === 0) return;
-    let next = queueIndex + 1;
-    if (next >= queue.length) {
-      if (repeatMode === 'all') next = 0;
-      else {
-        disableBackgroundMode();
-        set({ isPlaying: false });
-        return;
-      }
+    const { queue, originalQueue, queueIndex, repeatMode, upNextQueue } = get();
+
+    // 1. If queue has remaining songs, play next one
+    if (queue.length > 0 && queueIndex + 1 < queue.length) {
+      const nextIdx = queueIndex + 1;
+      const nextSong = queue[nextIdx];
+      updateBackgroundModeSettings(nextSong);
+      set({
+        queueIndex: nextIdx,
+        currentTrack: nextSong,
+        isPlaying: true,
+        progress: 0,
+        duration: 0,
+      });
+      get().fetchSimilarUpNext(nextSong);
+      return;
     }
-    const nextSong = queue[next];
-    updateBackgroundModeSettings(nextSong);
-    set({
-      queueIndex: next,
-      currentTrack: nextSong,
-      isPlaying: true,
-      progress: 0,
-      duration: 0,
-    });
+
+    // 2. If at end of queue and repeat 'all' is active, loop back to start
+    if (repeatMode === 'all' && queue.length > 0) {
+      const nextSong = queue[0];
+      updateBackgroundModeSettings(nextSong);
+      set({
+        queueIndex: 0,
+        currentTrack: nextSong,
+        isPlaying: true,
+        progress: 0,
+        duration: 0,
+      });
+      get().fetchSimilarUpNext(nextSong);
+      return;
+    }
+
+    // 3. Continuous Algorithmic Radio: Transition seamlessly to upNextQueue
+    if (upNextQueue.length > 0) {
+      const nextSong = upNextQueue[0];
+      const remainingUpNext = upNextQueue.slice(1);
+      const updatedQueue = [...queue, nextSong];
+      const updatedOriginal = [...originalQueue, nextSong];
+      updateBackgroundModeSettings(nextSong);
+      set({
+        queue: updatedQueue,
+        originalQueue: updatedOriginal,
+        queueIndex: updatedQueue.length - 1,
+        currentTrack: nextSong,
+        upNextQueue: remainingUpNext,
+        isPlaying: true,
+        progress: 0,
+        duration: 0,
+      });
+      get().fetchSimilarUpNext(nextSong);
+      return;
+    }
+
+    // 4. No more tracks available
+    disableBackgroundMode();
+    set({ isPlaying: false });
   },
 
   prevTrack: () => {

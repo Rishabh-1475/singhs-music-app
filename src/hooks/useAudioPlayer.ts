@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { usePlayerStore } from '@/store/playerStore';
 import { Track } from '@/types/track';
-import { searchTracks } from '@/services/musicService';
+import { searchTracks, getSimilarSongs } from '@/services/api';
 import { useAuthStore } from '@/store/authStore';
 import { logTrackPlay } from '@/services/recommendationService';
 import {
@@ -315,28 +315,26 @@ export function useAudioPlayer() {
         audio.currentTime = 0;
         audio.play().catch(() => {});
       } else {
-        const { queue, queueIndex, repeatMode: rMode, playNextTrack } = usePlayerStore.getState();
+        const { queue, queueIndex, repeatMode: rMode, upNextQueue, setUpNextQueue, playNextTrack } =
+          usePlayerStore.getState();
         const isQueueAtEnd = queueIndex >= queue.length - 1;
 
-        // If queue ends and repeat is off, automatically append 5 related tracks based on currentTrack.artist so playback never halts
-        if (isQueueAtEnd && rMode !== 'all' && currentTrack) {
+        // If at end of active queue and upNextQueue is empty, prefetch algorithmic similar songs
+        if (isQueueAtEnd && rMode !== 'all' && currentTrack && upNextQueue.length === 0) {
           try {
-            const query = currentTrack.artist || 'Top Hits';
-            const dataTracks = await searchTracks(query, 12);
-            const fetched: Track[] = dataTracks.filter(
-              (t: Track) => !queue.some((q) => q.id === t.id)
+            const similar = await getSimilarSongs(currentTrack.id, currentTrack.artist);
+            const filtered = similar.filter(
+              (t) => t.id !== currentTrack.id && !queue.some((q) => q.id === t.id)
             );
-            if (fetched.length > 0) {
-              const tracksToAppend = fetched.slice(0, 5);
-              usePlayerStore.getState().appendQueue(tracksToAppend);
-              playNextTrack();
-              return;
+            if (filtered.length > 0) {
+              setUpNextQueue(filtered.slice(0, 10));
             }
           } catch (err) {
-            console.warn('Auto recommendation on queue end failed:', err);
+            console.warn('Fallback onEnded recommendation fetch failed:', err);
           }
         }
 
+        // Seamlessly transition to the next track (either queue[next] or upNextQueue[0])
         playNextTrack();
       }
     };
