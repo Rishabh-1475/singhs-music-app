@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import {
   ChevronDown,
@@ -18,6 +19,12 @@ import {
 import { usePlayerStore } from '@/store/playerStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
+import {
+  isSongLiked,
+  toggleSongLike,
+  onLikedSongsChange,
+} from '@/services/recommendationService';
+import DownloadButton from './DownloadButton';
 
 function formatTime(s: number): string {
   if (!s || !isFinite(s)) return '0:00';
@@ -49,14 +56,35 @@ export default function MobilePlayerDrawer({
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const toggleQueue = usePlayerStore((s) => s.toggleQueue);
 
-  const toggleLike = useLibraryStore((s) => s.toggleLike);
-  const isLiked = useLibraryStore((s) => s.isLiked);
-
   const { seek } = useAudioPlayer();
+
+  const [liked, setLiked] = useState(false);
+
+  useEffect(() => {
+    const trackId = currentTrack?.id;
+    if (!trackId) {
+      setLiked(false);
+      return;
+    }
+    setLiked(isSongLiked(trackId));
+
+    const unsubscribe = onLikedSongsChange((changedId, isLikedState) => {
+      if (changedId === trackId) {
+        setLiked(isLikedState);
+      }
+    });
+
+    return unsubscribe;
+  }, [currentTrack?.id]);
+
+  const handleToggleLike = () => {
+    if (!currentTrack) return;
+    const next = toggleSongLike(currentTrack);
+    setLiked(next);
+  };
 
   if (!isOpen || !currentTrack) return null;
 
-  const liked = isLiked(currentTrack.id);
   const progressPct = duration > 0 ? (progress / duration) * 100 : 0;
   const imageSrc =
     currentTrack.albumArt ||
@@ -126,15 +154,25 @@ export default function MobilePlayerDrawer({
             </p>
           </div>
 
-          <button
-            onClick={() => toggleLike(currentTrack)}
-            className="w-11 h-11 flex items-center justify-center flex-shrink-0 text-neutral-400 hover:text-white transition-colors"
-          >
-            <Heart
-              size={24}
-              className={liked ? 'text-[#1DB954] fill-[#1DB954]' : ''}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <DownloadButton
+              track={currentTrack}
+              size={22}
+              className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition-colors"
             />
-          </button>
+
+            <button
+              onClick={handleToggleLike}
+              className="w-11 h-11 flex items-center justify-center flex-shrink-0 text-neutral-400 hover:text-white transition-colors"
+              title={liked ? 'Remove from favorites' : 'Save to favorites'}
+              aria-label={liked ? 'Remove from favorites' : 'Save to favorites'}
+            >
+              <Heart
+                size={24}
+                className={liked ? 'text-emerald-400 fill-emerald-400' : ''}
+              />
+            </button>
+          </div>
         </div>
 
         {/* Large Touch-Friendly Progress Scrub Bar */}

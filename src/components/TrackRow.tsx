@@ -6,6 +6,7 @@ import { Track } from '@/types/track';
 import { usePlayerStore } from '@/store/playerStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useState } from 'react';
+import DownloadButton from './DownloadButton';
 
 interface TrackRowProps {
   track: Track;
@@ -120,8 +121,16 @@ export default function TrackRow({
         </div>
       )}
 
-      {/* Duration & Like Button */}
-      <div className="col-span-4 sm:col-span-2 flex items-center justify-end gap-3.5 text-xs text-neutral-400 font-mono">
+      {/* Duration, Download & Like Buttons */}
+      <div className="col-span-4 sm:col-span-2 flex items-center justify-end gap-2.5 text-xs text-neutral-400 font-mono">
+        {/* Offline Download Button */}
+        <DownloadButton
+          track={track}
+          size={16}
+          className="p-1 opacity-0 group-hover:opacity-100 hover:scale-110 transition-all"
+        />
+
+        {/* Favorite Heart Button */}
         <button
           onClick={(e) => {
             e.stopPropagation();

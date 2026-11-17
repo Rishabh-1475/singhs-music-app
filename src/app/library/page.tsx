@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Trash2, Heart, Music } from 'lucide-react';
+import { Plus, Trash2, Heart, Music, ArrowDownToLine } from 'lucide-react';
 import TopNav from '@/components/TopNav';
 import FooterSignature from '@/components/FooterSignature';
 import { useLibraryStore } from '@/store/libraryStore';
+import { getDownloadedTracks, onOfflineTracksChange } from '@/services/offlineStorage';
 
 export default function LibraryPage() {
   const playlists = useLibraryStore((s) => s.playlists);
@@ -15,9 +16,15 @@ export default function LibraryPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [isMounted, setIsMounted] = useState(false);
+  const [downloadedCount, setDownloadedCount] = useState(0);
 
   useEffect(() => {
     setIsMounted(true);
+    getDownloadedTracks().then((tracks) => setDownloadedCount(tracks.length));
+    const unsubscribe = onOfflineTracksChange(() => {
+      getDownloadedTracks().then((tracks) => setDownloadedCount(tracks.length));
+    });
+    return () => unsubscribe();
   }, []);
 
   const handleCreate = () => {
@@ -99,6 +106,22 @@ export default function LibraryPage() {
               <p className="truncate font-bold text-sm text-white">Liked Songs</p>
               <p className="mt-1 truncate text-xs text-neutral-400 font-normal">
                 {isMounted ? likedTrackIds.length : 0} tracks saved
+              </p>
+            </div>
+          </Link>
+
+          {/* Downloaded Songs Tile */}
+          <Link
+            href="/downloads"
+            className="group relative flex flex-col rounded-2xl bg-[#16191E] border border-[#22262F] p-3.5 transition-all duration-200 hover:border-neutral-500 hover:bg-[#1c2027] select-none cursor-pointer shadow-sm hover:shadow-xl hover:-translate-y-0.5"
+          >
+            <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-500 shadow-md flex items-center justify-center text-black">
+              <ArrowDownToLine size={44} strokeWidth={2.5} />
+            </div>
+            <div className="mt-3 min-w-0">
+              <p className="truncate font-bold text-sm text-white">Downloaded</p>
+              <p className="mt-1 truncate text-xs text-neutral-400 font-normal">
+                {isMounted ? downloadedCount : 0} offline tracks
               </p>
             </div>
           </Link>

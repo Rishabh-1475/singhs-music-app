@@ -20,6 +20,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { Track, Artist } from '@/types/track';
 import { usePlayerStore } from '@/store/playerStore';
 import { TRENDING_FALLBACK_TRACKS } from '@/data/tracks';
+import { getTopArtists } from '@/services/recommendationService';
 
 interface CategoryData {
   id: string;
@@ -29,6 +30,48 @@ interface CategoryData {
   tracks: Track[];
 }
 
+function HeroArtistPlayButton({ trendingTracks }: { trendingTracks: Track[] }) {
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const currentTrackId = usePlayerStore((s) => s.currentTrack?.id);
+  const currentTrackArtist = usePlayerStore((s) => s.currentTrack?.artist);
+  const playQueue = usePlayerStore((s) => s.playQueue);
+  const togglePlay = usePlayerStore((s) => s.togglePlay);
+
+  const isHeroArtistPlaying = Boolean(
+    currentTrackArtist &&
+      (currentTrackArtist.toLowerCase().includes('arijit') ||
+        currentTrackId === trendingTracks[0]?.id) &&
+      isPlaying
+  );
+
+  const handleHeroListenNow = () => {
+    if (isHeroArtistPlaying) {
+      togglePlay();
+    } else {
+      playQueue(trendingTracks, 0);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleHeroListenNow}
+      className="px-6 sm:px-8 py-3 rounded-full bg-[#1DB954] text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2.5 shadow-xl shadow-[#1DB954]/30 hover:scale-105 active:scale-95 transition-transform min-h-[44px]"
+    >
+      {isHeroArtistPlaying ? (
+        <>
+          <Pause size={18} fill="black" />
+          <span>Pause</span>
+        </>
+      ) : (
+        <>
+          <Play size={18} fill="black" className="ml-0.5" />
+          <span>Listen Now</span>
+        </>
+      )}
+    </button>
+  );
+}
+
 export default function HomePage() {
   const [categories, setCategories] = useState<CategoryData[]>([]);
   const [trendingTracks, setTrendingTracks] = useState<Track[]>(TRENDING_FALLBACK_TRACKS);
@@ -36,10 +79,99 @@ export default function HomePage() {
   const [isLoadingArtists, setIsLoadingArtists] = useState(true);
   const [isFollowing, setIsFollowing] = useState(false);
 
-  const currentTrack = usePlayerStore((s) => s.currentTrack);
-  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  // Recommendations state
+  const [recommendedTracks, setRecommendedTracks] = useState<Track[]>([]);
+  const [recommendedSubtitle, setRecommendedSubtitle] = useState<string>('Personalized based on your taste');
+  const [isLoadingRecs, setIsLoadingRecs] = useState<boolean>(true);
+
+  // Isolate playQueue so HomePage never re-renders when tracks change or play/pause toggles
   const playQueue = usePlayerStore((s) => s.playQueue);
-  const togglePlay = usePlayerStore((s) => s.togglePlay);
+
+  // Load recommendations based on top played artists in smc_play_history
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchRecommendations() {
+      try {
+        const topArtists = getTopArtists(2);
+
+        if (!topArtists || topArtists.length === 0) {
+          if (isMounted) {
+            setRecommendedTracks(trendingTracks.slice(0, 12));
+            setRecommendedSubtitle('Trending chartbusters tailored for you');
+            setIsLoadingRecs(false);
+          }
+          return;
+        }
+
+        if (isMounted) {
+          setRecommendedSubtitle(`Inspired by your favorite artists: ${topArtists.join(' & ')}`);
+          setIsLoadingRecs(true);
+        }
+
+        const results = await Promise.all(
+          topArtists.map(async (artist) => {
+            try {
+              const res = await fetch(
+                `/api/music/search?q=${encodeURIComponent(artist)}&limit=10`
+              );
+              if (res.ok) {
+                const json = await res.json();
+                return (json.data || []) as Track[];
+              }
+            } catch (e) {
+              console.warn('Failed to fetch recommendations for artist:', artist, e);
+            }
+            return [] as Track[];
+          })
+        );
+
+        if (!isMounted) return;
+
+        const merged: Track[] = [];
+        const seen = new Set<string>();
+
+        const maxLen = Math.max(...results.map((r) => r.length), 0);
+        for (let i = 0; i < maxLen; i++) {
+          for (const list of results) {
+            if (list[i] && !seen.has(list[i].id)) {
+              seen.add(list[i].id);
+              merged.push(list[i]);
+            }
+          }
+        }
+
+        if (merged.length > 0) {
+          setRecommendedTracks(merged);
+        } else {
+          setRecommendedTracks(trendingTracks.slice(0, 12));
+        }
+      } catch (err) {
+        console.warn('Failed to load recommended tracks:', err);
+        if (isMounted) {
+          setRecommendedTracks(trendingTracks.slice(0, 12));
+        }
+      } finally {
+        if (isMounted) setIsLoadingRecs(false);
+      }
+    }
+
+    fetchRecommendations();
+
+    const handleHistoryUpdate = () => {
+      fetchRecommendations();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('smc_history_updated', handleHistoryUpdate);
+    }
+    return () => {
+      isMounted = false;
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('smc_history_updated', handleHistoryUpdate);
+      }
+    };
+  }, [trendingTracks]);
 
   // Load live categories & live artists with fallback guarantee
   useEffect(() => {
@@ -79,20 +211,6 @@ export default function HomePage() {
       isMounted = false;
     };
   }, []);
-
-  const isHeroArtistPlaying =
-    currentTrack &&
-    (currentTrack.artist.toLowerCase().includes('arijit') ||
-      currentTrack.id === trendingTracks[0]?.id) &&
-    isPlaying;
-
-  const handleHeroListenNow = () => {
-    if (isHeroArtistPlaying) {
-      togglePlay();
-    } else {
-      playQueue(trendingTracks, 0);
-    }
-  };
 
   const handleArtistClick = async (artistName: string) => {
     try {
@@ -203,22 +321,7 @@ export default function HomePage() {
 
               {/* Action Buttons: Listen Now & Follow */}
               <div className="flex items-center gap-3 sm:gap-4 pt-2">
-                <button
-                  onClick={handleHeroListenNow}
-                  className="px-6 sm:px-8 py-3 rounded-full bg-[#1DB954] text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2.5 shadow-xl shadow-[#1DB954]/30 hover:scale-105 active:scale-95 transition-transform min-h-[44px]"
-                >
-                  {isHeroArtistPlaying ? (
-                    <>
-                      <Pause size={18} fill="black" />
-                      <span>Pause</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play size={18} fill="black" className="ml-0.5" />
-                      <span>Listen Now</span>
-                    </>
-                  )}
-                </button>
+                <HeroArtistPlayButton trendingTracks={trendingTracks} />
 
                 <button
                   onClick={() => setIsFollowing(!isFollowing)}
@@ -254,7 +357,58 @@ export default function HomePage() {
         </section>
         </ErrorBoundary>
 
-        {/* 3. Horizontal Grid / Carousel: "Recently Played" */}
+        {/* 3. Dynamic Section: "Made For You (Recommended)" */}
+        <ErrorBoundary fallbackTitle="Recommended Feed Unavailable">
+          <section className="space-y-3 sm:space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Sparkles size={22} className="text-emerald-400" />
+                <div>
+                  <h2 className="text-lg sm:text-2xl font-bold text-white tracking-tight">
+                    Made For You (Recommended)
+                  </h2>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    {recommendedSubtitle}
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-bold text-neutral-400 hover:text-white uppercase tracking-wider cursor-pointer hidden sm:block">
+                See all
+              </span>
+            </div>
+
+            {isLoadingRecs ? (
+              <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 md:gap-4 snap-x snap-mandatory">
+                {Array.from({ length: 6 }).map((_, idx) => (
+                  <div
+                    key={`rec-skeleton-${idx}`}
+                    className="min-w-[150px] sm:min-w-[170px] md:min-w-0 flex-shrink-0 snap-start flex flex-col p-3.5 rounded-2xl bg-[#16191E] border border-[#22262F] animate-pulse"
+                  >
+                    <div className="aspect-square w-full rounded-xl bg-zinc-800" />
+                    <div className="mt-3 w-3/4 h-3.5 bg-zinc-800 rounded-full" />
+                    <div className="mt-1.5 w-1/2 h-2.5 bg-zinc-800/60 rounded-full" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 md:gap-4 snap-x snap-mandatory">
+                {recommendedTracks.map((track) => (
+                  <div
+                    key={`rec-${track.id}`}
+                    className="min-w-[150px] sm:min-w-[170px] md:min-w-0 flex-shrink-0 snap-start"
+                  >
+                    <SongCard
+                      track={track}
+                      tracks={recommendedTracks}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </ErrorBoundary>
+
+        {/* 4. Horizontal Grid / Carousel: "Recently Played" */}
         <ErrorBoundary fallbackTitle="Recently Played Unavailable">
           <section className="space-y-3 sm:space-y-4">
             <div className="flex items-center justify-between">

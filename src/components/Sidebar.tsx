@@ -17,9 +17,11 @@ import {
   Trash2,
   Activity,
   BadgeCheck,
+  ArrowDownToLine,
 } from 'lucide-react';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useState, useEffect } from 'react';
+import { getDownloadedTracks, onOfflineTracksChange } from '@/services/offlineStorage';
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -29,9 +31,15 @@ export default function Sidebar() {
   const [showCreateInput, setShowCreateInput] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [isMounted, setIsMounted] = useState(false);
+  const [downloadedCount, setDownloadedCount] = useState(0);
 
   useEffect(() => {
     setIsMounted(true);
+    getDownloadedTracks().then((tracks) => setDownloadedCount(tracks.length)).catch(() => {});
+    const unsubscribe = onOfflineTracksChange(() => {
+      getDownloadedTracks().then((tracks) => setDownloadedCount(tracks.length)).catch(() => {});
+    });
+    return () => unsubscribe();
   }, []);
 
   const handleCreate = () => {
@@ -52,6 +60,7 @@ export default function Sidebar() {
   const collectionLinks = [
     { href: '/#recent', icon: Clock, label: 'Recently Played' },
     { href: '/liked', icon: Heart, label: 'Liked Songs' },
+    { href: '/downloads', icon: ArrowDownToLine, label: 'Downloaded' },
     { href: '/#artists', icon: Mic2, label: 'Artists' },
     { href: '/library', icon: Disc, label: 'Albums' },
   ];
@@ -145,6 +154,11 @@ export default function Sidebar() {
                     }
                   />
                   <span>{label}</span>
+                  {label === 'Downloaded' && isMounted && downloadedCount > 0 && (
+                    <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      {downloadedCount}
+                    </span>
+                  )}
                 </Link>
               );
             })}

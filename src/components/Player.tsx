@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import {
   Play,
@@ -22,6 +22,12 @@ import {
 import { usePlayerStore } from '@/store/playerStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
+import {
+  isSongLiked,
+  toggleSongLike,
+  onLikedSongsChange,
+} from '@/services/recommendationService';
+import DownloadButton from './DownloadButton';
 import MobilePlayerDrawer from './MobilePlayerDrawer';
 
 function formatTime(s: number): string {
@@ -54,13 +60,34 @@ export default function Player() {
   const setVolume = usePlayerStore((s) => s.setVolume);
   const toggleMute = usePlayerStore((s) => s.toggleMute);
 
-  const toggleLike = useLibraryStore((s) => s.toggleLike);
-  const isLiked = useLibraryStore((s) => s.isLiked);
-
   const { seek } = useAudioPlayer();
 
+  const [isCurrentLiked, setIsCurrentLiked] = useState(false);
+
+  useEffect(() => {
+    const trackId = currentTrack?.id;
+    if (!trackId) {
+      setIsCurrentLiked(false);
+      return;
+    }
+    setIsCurrentLiked(isSongLiked(trackId));
+
+    const unsubscribe = onLikedSongsChange((changedId, isLikedState) => {
+      if (changedId === trackId) {
+        setIsCurrentLiked(isLikedState);
+      }
+    });
+
+    return unsubscribe;
+  }, [currentTrack?.id]);
+
+  const handleToggleLike = () => {
+    if (!currentTrack) return;
+    const next = toggleSongLike(currentTrack);
+    setIsCurrentLiked(next);
+  };
+
   const progressPct = duration > 0 ? (progress / duration) * 100 : 0;
-  const liked = currentTrack ? isLiked(currentTrack.id) : false;
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (duration === 0) return;
@@ -119,15 +146,22 @@ export default function Player() {
               </div>
 
               <button
-                onClick={() => toggleLike(currentTrack)}
+                onClick={handleToggleLike}
                 className="p-1 text-neutral-400 hover:text-white transition-colors flex-shrink-0"
-                title={liked ? 'Remove from favorites' : 'Save to favorites'}
+                title={isCurrentLiked ? 'Remove from favorites' : 'Save to favorites'}
+                aria-label={isCurrentLiked ? 'Remove from favorites' : 'Save to favorites'}
               >
                 <Heart
                   size={18}
-                  className={liked ? 'text-[#1DB954] fill-[#1DB954]' : ''}
+                  className={isCurrentLiked ? 'text-emerald-400 fill-emerald-400' : ''}
                 />
               </button>
+
+              <DownloadButton
+                track={currentTrack}
+                size={18}
+                className="p-1 text-neutral-400 hover:text-white transition-colors flex-shrink-0"
+              />
             </>
           ) : (
             <div className="text-xs text-neutral-500 font-mono">
@@ -328,15 +362,21 @@ export default function Player() {
             onClick={(e) => e.stopPropagation()}
           >
             <button
-              onClick={() => toggleLike(currentTrack)}
+              onClick={handleToggleLike}
               className="w-10 h-10 flex items-center justify-center text-neutral-400 hover:text-white transition-colors"
-              aria-label="Favorite"
+              aria-label={isCurrentLiked ? 'Remove from favorites' : 'Favorite'}
             >
               <Heart
                 size={18}
-                className={liked ? 'text-[#1DB954] fill-[#1DB954]' : ''}
+                className={isCurrentLiked ? 'text-emerald-400 fill-emerald-400' : ''}
               />
             </button>
+
+            <DownloadButton
+              track={currentTrack}
+              size={18}
+              className="w-9 h-10 flex items-center justify-center text-neutral-400 hover:text-white transition-colors"
+            />
 
             <button
               onClick={togglePlay}

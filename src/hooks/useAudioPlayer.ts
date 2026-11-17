@@ -1,9 +1,17 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { usePlayerStore } from '@/store/playerStore';
+import { Track } from '@/types/track';
+import { logTrackPlay } from '@/services/recommendationService';
+import {
+  enableBackgroundMode,
+  disableBackgroundMode,
+  updateBackgroundModeSettings,
+} from '@/services/backgroundAudio';
 
 let globalAudio: HTMLAudioElement | null = null;
 
-function getAudio(): HTMLAudioElement {
+function getAudio(): HTMLAudioElement | null {
+  if (typeof window === 'undefined') return null;
   if (!globalAudio) {
     globalAudio = new Audio();
     globalAudio.preload = 'auto';
@@ -14,6 +22,7 @@ function getAudio(): HTMLAudioElement {
 export function useAudioPlayer() {
   const animRef = useRef<number>(0);
   const seekingRef = useRef(false);
+  const loggedPlayRef = useRef<string | null>(null);
 
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -27,6 +36,7 @@ export function useAudioPlayer() {
   const prevTrack = usePlayerStore((s) => s.prevTrack);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const currentBlobUrlRef = useRef<string | null>(null);
 
   // Initialize audio element
   useEffect(() => {
@@ -41,21 +51,46 @@ export function useAudioPlayer() {
   useEffect(() => {
     if (typeof window === 'undefined' || !('mediaSession' in navigator) || !currentTrack) return;
 
-    const artworkUrl = currentTrack.albumArt || currentTrack.artwork || '';
+    const trackTitle = currentTrack.name || currentTrack.title || 'Track';
+    const trackArtist = currentTrack.artist || 'SMC Music';
+    const trackAlbum = currentTrack.album || 'SMC Music';
+    const trackImage =
+      currentTrack.image ||
+      currentTrack.albumArt ||
+      currentTrack.artwork ||
+      '/creator.jpg';
 
     navigator.mediaSession.metadata = new MediaMetadata({
-      title: currentTrack.title || 'Unknown Track',
-      artist: currentTrack.artist || 'Unknown Artist',
-      album: currentTrack.album || 'SMC Music',
-      artwork: artworkUrl
-        ? [
-            { src: artworkUrl, sizes: '96x96', type: 'image/jpeg' },
-            { src: artworkUrl, sizes: '256x256', type: 'image/jpeg' },
-            { src: artworkUrl, sizes: '512x512', type: 'image/jpeg' },
-          ]
-        : [],
+      title: trackTitle,
+      artist: trackArtist,
+      album: trackAlbum,
+      artwork: [
+        { src: trackImage, sizes: '96x96', type: 'image/jpeg' },
+        { src: trackImage, sizes: '128x128', type: 'image/jpeg' },
+        { src: trackImage, sizes: '192x192', type: 'image/jpeg' },
+        { src: trackImage, sizes: '256x256', type: 'image/jpeg' },
+        { src: trackImage, sizes: '512x512', type: 'image/jpeg' },
+      ],
     });
   }, [currentTrack]);
+
+  // ─── Native Background Mode & Foreground Notification Sync ───
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (isPlaying && currentTrack) {
+      enableBackgroundMode(currentTrack);
+    } else {
+      disableBackgroundMode();
+    }
+  }, [isPlaying, currentTrack]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !currentTrack) return;
+    if (isPlaying) {
+      updateBackgroundModeSettings(currentTrack);
+    }
+  }, [currentTrack, isPlaying]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
@@ -67,71 +102,82 @@ export function useAudioPlayer() {
     if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
 
     const ms = navigator.mediaSession;
-    const a = audioRef.current;
+    const audioElement = audioRef.current;
 
-    ms.setActionHandler('play', () => {
-      if (a) {
-        a.play().catch(() => {});
+    const handlePlay = () => {
+      if (audioElement) {
+        audioElement.play().catch(() => {});
       }
       setIsPlaying(true);
-    });
+      if (currentTrack) {
+        enableBackgroundMode(currentTrack);
+      }
+    };
 
-    ms.setActionHandler('pause', () => {
-      if (a) {
-        a.pause();
+    const handlePause = () => {
+      if (audioElement) {
+        audioElement.pause();
       }
       setIsPlaying(false);
-    });
+      disableBackgroundMode();
+    };
 
-    ms.setActionHandler('previoustrack', () => {
+    const handlePrevious = () => {
       prevTrack();
-    });
+    };
 
-    ms.setActionHandler('nexttrack', () => {
+    const handleNext = () => {
       nextTrack();
-    });
+    };
+
+    ms.setActionHandler('play', () => handlePlay());
+    ms.setActionHandler('pause', () => handlePause());
+    ms.setActionHandler('previoustrack', () => handlePrevious());
+    ms.setActionHandler('nexttrack', () => handleNext());
 
     ms.setActionHandler('seekto', (details) => {
-      if (a && details.seekTime !== undefined && details.seekTime !== null) {
-        a.currentTime = details.seekTime;
+      if (details.seekTime !== undefined && details.seekTime !== null && audioElement) {
+        audioElement.currentTime = details.seekTime;
         setProgress(details.seekTime);
       }
     });
 
     ms.setActionHandler('seekbackward', (details) => {
-      if (a) {
+      if (audioElement) {
         const skipTime = details.seekOffset || 10;
-        a.currentTime = Math.max(a.currentTime - skipTime, 0);
-        setProgress(a.currentTime);
+        audioElement.currentTime = Math.max(audioElement.currentTime - skipTime, 0);
+        setProgress(audioElement.currentTime);
       }
     });
 
     ms.setActionHandler('seekforward', (details) => {
-      if (a) {
+      if (audioElement) {
         const skipTime = details.seekOffset || 10;
-        a.currentTime = Math.min(a.currentTime + skipTime, a.duration || Infinity);
-        setProgress(a.currentTime);
+        audioElement.currentTime = Math.min(
+          audioElement.currentTime + skipTime,
+          audioElement.duration || Infinity
+        );
+        setProgress(audioElement.currentTime);
       }
     });
 
-    // Update position state so the OS scrubber knows elapsed/total
+    // Update position state for OS lock-screen scrubbers
     const positionInterval = setInterval(() => {
-      if (a && !isNaN(a.duration) && a.duration > 0) {
+      if (audioElement && !isNaN(audioElement.duration) && audioElement.duration > 0) {
         try {
           navigator.mediaSession.setPositionState({
-            duration: a.duration,
-            playbackRate: a.playbackRate || 1,
-            position: Math.min(a.currentTime, a.duration),
+            duration: audioElement.duration,
+            playbackRate: audioElement.playbackRate || 1,
+            position: Math.min(audioElement.currentTime, audioElement.duration),
           });
         } catch {
-          // Some browsers may not support setPositionState
+          // setPositionState may not be supported by all browsers
         }
       }
     }, 1000);
 
     return () => {
       clearInterval(positionInterval);
-      // Clearing handlers prevents them from firing after unmount
       ms.setActionHandler('play', null);
       ms.setActionHandler('pause', null);
       ms.setActionHandler('previoustrack', null);
@@ -140,22 +186,57 @@ export function useAudioPlayer() {
       ms.setActionHandler('seekbackward', null);
       ms.setActionHandler('seekforward', null);
     };
-  }, [nextTrack, prevTrack, setIsPlaying, setProgress]);
+  }, [nextTrack, prevTrack, setIsPlaying, setProgress, currentTrack]);
 
-  // Load track seamlessly without reloading if URL matches
+  // Reset logged play tracker on track change
+  useEffect(() => {
+    loggedPlayRef.current = null;
+  }, [currentTrack?.id]);
+
+  // Load track seamlessly without reloading if URL matches, supporting offline Blob object URLs
   useEffect(() => {
     if (!audio || !currentTrack) return;
-    const targetUrl = currentTrack.url || currentTrack.audioUrl;
-    if (!targetUrl) return;
+
+    // Revoke previous blob object URL to prevent memory leaks
+    if (currentBlobUrlRef.current) {
+      try {
+        URL.revokeObjectURL(currentBlobUrlRef.current);
+      } catch {}
+      currentBlobUrlRef.current = null;
+    }
+
+    let audioSrc = currentTrack.url || currentTrack.audioUrl || currentTrack.downloadUrl || '';
+
+    // If track carries an audioBlob, create an object URL
+    if (currentTrack.audioBlob) {
+      try {
+        const blobUrl = URL.createObjectURL(currentTrack.audioBlob);
+        currentBlobUrlRef.current = blobUrl;
+        audioSrc = blobUrl;
+      } catch (err) {
+        console.warn('Failed to create object URL from track audioBlob:', err);
+      }
+    }
+
+    if (!audioSrc) return;
 
     // Check if the current audio source matches to prevent reloading during page navigation
-    if (audio.src !== targetUrl) {
-      audio.src = targetUrl;
+    if (audio.src !== audioSrc) {
+      audio.src = audioSrc;
       audio.load();
       audio.play().catch(() => {
         /* Autoplay was prevented by browser policy */
       });
     }
+
+    return () => {
+      if (currentBlobUrlRef.current) {
+        try {
+          URL.revokeObjectURL(currentBlobUrlRef.current);
+        } catch {}
+        currentBlobUrlRef.current = null;
+      }
+    };
   }, [audio, currentTrack]);
 
   // Play/Pause
@@ -184,12 +265,43 @@ export function useAudioPlayer() {
       setDuration(audio.duration || 0);
     };
 
-    const onEnded = () => {
+    const onEnded = async () => {
+      // Log track completion if not already logged at 20 seconds
+      if (currentTrack && loggedPlayRef.current !== currentTrack.id) {
+        loggedPlayRef.current = currentTrack.id;
+        logTrackPlay(currentTrack);
+      }
+
       if (repeatMode === 'one') {
         audio.currentTime = 0;
         audio.play().catch(() => {});
       } else {
-        nextTrack();
+        const { queue, queueIndex, repeatMode: rMode, playNextTrack } = usePlayerStore.getState();
+        const isQueueAtEnd = queueIndex >= queue.length - 1;
+
+        // If queue ends and repeat is off, automatically append 5 related tracks based on currentTrack.artist so playback never halts
+        if (isQueueAtEnd && rMode !== 'all' && currentTrack) {
+          try {
+            const query = currentTrack.artist || 'Top Hits';
+            const res = await fetch(`/api/music/search?q=${encodeURIComponent(query)}&limit=12`);
+            if (res.ok) {
+              const data = await res.json();
+              const fetched: Track[] = (data.data || []).filter(
+                (t: Track) => !queue.some((q) => q.id === t.id)
+              );
+              if (fetched.length > 0) {
+                const tracksToAppend = fetched.slice(0, 5);
+                usePlayerStore.getState().appendQueue(tracksToAppend);
+                playNextTrack();
+                return;
+              }
+            }
+          } catch (err) {
+            console.warn('Auto recommendation on queue end failed:', err);
+          }
+        }
+
+        playNextTrack();
       }
     };
 
@@ -242,12 +354,22 @@ export function useAudioPlayer() {
     const update = () => {
       if (!seekingRef.current) {
         setProgress(audio.currentTime);
+
+        // Track play if current time reaches 20 seconds
+        if (
+          currentTrack &&
+          audio.currentTime >= 20 &&
+          loggedPlayRef.current !== currentTrack.id
+        ) {
+          loggedPlayRef.current = currentTrack.id;
+          logTrackPlay(currentTrack);
+        }
       }
       animRef.current = requestAnimationFrame(update);
     };
     animRef.current = requestAnimationFrame(update);
     return () => cancelAnimationFrame(animRef.current);
-  }, [audio, setProgress]);
+  }, [audio, setProgress, currentTrack]);
 
   const seek = useCallback(
     (time: number) => {

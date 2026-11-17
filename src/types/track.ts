@@ -1,13 +1,17 @@
 export interface Track {
   id: string;
   title: string;
+  name?: string;
   artist: string;
   album: string;
   albumArt: string;
   artwork?: string;
+  image?: string;
   duration: number;
   url: string;
   audioUrl?: string;
+  downloadUrl?: string;
+  audioBlob?: Blob;
   genre: string;
 }
 

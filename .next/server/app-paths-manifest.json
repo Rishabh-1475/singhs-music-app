@@ -1,3 +1,14 @@
 {
-  "/page": "app/page.js"
+  "/_not-found/page": "app/_not-found/page.js",
+  "/library/page": "app/library/page.js",
+  "/search/page": "app/search/page.js",
+  "/liked/page": "app/liked/page.js",
+  "/playlist/[id]/page": "app/playlist/[id]/page.js",
+  "/page": "app/page.js",
+  "/downloads/page": "app/downloads/page.js",
+  "/api/music/categories/route": "app/api/music/categories/route.js",
+  "/api/music/song/route": "app/api/music/song/route.js",
+  "/api/music/search/route": "app/api/music/search/route.js",
+  "/api/music/artists/route": "app/api/music/artists/route.js",
+  "/api/music/trending/route": "app/api/music/trending/route.js"
 }

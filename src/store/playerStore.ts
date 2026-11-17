@@ -1,5 +1,10 @@
 import { create } from 'zustand';
 import { Track, RepeatMode } from '@/types/track';
+import {
+  enableBackgroundMode,
+  disableBackgroundMode,
+  updateBackgroundModeSettings,
+} from '@/services/backgroundAudio';
 
 interface PlayerState {
   currentTrack: Track | null;
@@ -18,10 +23,13 @@ interface PlayerState {
 
   setTrack: (track: Track) => void;
   playQueue: (tracks: Track[], startIndex?: number) => void;
+  appendQueue: (tracks: Track[]) => void;
   togglePlay: () => void;
   setIsPlaying: (v: boolean) => void;
   nextTrack: () => void;
   prevTrack: () => void;
+  playNextTrack: () => void;
+  playPreviousTrack: () => void;
   setVolume: (v: number) => void;
   toggleMute: () => void;
   setProgress: (v: number) => void;
@@ -63,6 +71,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   showFullScreen: false,
 
   setTrack: (track) => {
+    enableBackgroundMode(track);
     set({ currentTrack: track, isPlaying: true, progress: 0, duration: 0 });
   },
 
@@ -72,19 +81,45 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const idx = isShuffled
       ? q.findIndex((t) => t.id === tracks[startIndex].id)
       : startIndex;
+    const targetTrack = q[idx];
+    enableBackgroundMode(targetTrack);
     set({
       queue: q,
       originalQueue: tracks,
       queueIndex: idx,
-      currentTrack: q[idx],
+      currentTrack: targetTrack,
       isPlaying: true,
       progress: 0,
       duration: 0,
     });
   },
 
-  togglePlay: () => set((s) => ({ isPlaying: !s.isPlaying })),
-  setIsPlaying: (v) => set({ isPlaying: v }),
+  appendQueue: (newTracks) => {
+    const { queue, originalQueue } = get();
+    set({
+      queue: [...queue, ...newTracks],
+      originalQueue: [...originalQueue, ...newTracks],
+    });
+  },
+
+  togglePlay: () => {
+    const nextPlaying = !get().isPlaying;
+    if (nextPlaying) {
+      enableBackgroundMode(get().currentTrack);
+    } else {
+      disableBackgroundMode();
+    }
+    set({ isPlaying: nextPlaying });
+  },
+
+  setIsPlaying: (v) => {
+    if (v) {
+      enableBackgroundMode(get().currentTrack);
+    } else {
+      disableBackgroundMode();
+    }
+    set({ isPlaying: v });
+  },
 
   nextTrack: () => {
     const { queue, queueIndex, repeatMode } = get();
@@ -93,13 +128,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (next >= queue.length) {
       if (repeatMode === 'all') next = 0;
       else {
+        disableBackgroundMode();
         set({ isPlaying: false });
         return;
       }
     }
+    const nextSong = queue[next];
+    updateBackgroundModeSettings(nextSong);
     set({
       queueIndex: next,
-      currentTrack: queue[next],
+      currentTrack: nextSong,
       isPlaying: true,
       progress: 0,
       duration: 0,
@@ -115,13 +153,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
     let prev = queueIndex - 1;
     if (prev < 0) prev = queue.length - 1;
+    const prevSong = queue[prev];
+    updateBackgroundModeSettings(prevSong);
     set({
       queueIndex: prev,
-      currentTrack: queue[prev],
+      currentTrack: prevSong,
       isPlaying: true,
       progress: 0,
       duration: 0,
     });
+  },
+
+  playNextTrack: () => {
+    get().nextTrack();
+  },
+
+  playPreviousTrack: () => {
+    get().prevTrack();
   },
 
   setVolume: (v) => {
