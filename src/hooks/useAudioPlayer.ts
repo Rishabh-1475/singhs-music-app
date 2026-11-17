@@ -24,6 +24,7 @@ export function useAudioPlayer() {
   const setDuration = usePlayerStore((s) => s.setDuration);
   const setIsPlaying = usePlayerStore((s) => s.setIsPlaying);
   const nextTrack = usePlayerStore((s) => s.nextTrack);
+  const prevTrack = usePlayerStore((s) => s.prevTrack);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -35,6 +36,111 @@ export function useAudioPlayer() {
   }, []);
 
   const audio = audioRef.current;
+
+  // ─── MediaSession API: Bluetooth / headphone / lock-screen controls ───
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('mediaSession' in navigator) || !currentTrack) return;
+
+    const artworkUrl = currentTrack.albumArt || currentTrack.artwork || '';
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: currentTrack.title || 'Unknown Track',
+      artist: currentTrack.artist || 'Unknown Artist',
+      album: currentTrack.album || 'SMC Music',
+      artwork: artworkUrl
+        ? [
+            { src: artworkUrl, sizes: '96x96', type: 'image/jpeg' },
+            { src: artworkUrl, sizes: '256x256', type: 'image/jpeg' },
+            { src: artworkUrl, sizes: '512x512', type: 'image/jpeg' },
+          ]
+        : [],
+    });
+  }, [currentTrack]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
+
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+  }, [isPlaying]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
+
+    const ms = navigator.mediaSession;
+    const a = audioRef.current;
+
+    ms.setActionHandler('play', () => {
+      if (a) {
+        a.play().catch(() => {});
+      }
+      setIsPlaying(true);
+    });
+
+    ms.setActionHandler('pause', () => {
+      if (a) {
+        a.pause();
+      }
+      setIsPlaying(false);
+    });
+
+    ms.setActionHandler('previoustrack', () => {
+      prevTrack();
+    });
+
+    ms.setActionHandler('nexttrack', () => {
+      nextTrack();
+    });
+
+    ms.setActionHandler('seekto', (details) => {
+      if (a && details.seekTime !== undefined && details.seekTime !== null) {
+        a.currentTime = details.seekTime;
+        setProgress(details.seekTime);
+      }
+    });
+
+    ms.setActionHandler('seekbackward', (details) => {
+      if (a) {
+        const skipTime = details.seekOffset || 10;
+        a.currentTime = Math.max(a.currentTime - skipTime, 0);
+        setProgress(a.currentTime);
+      }
+    });
+
+    ms.setActionHandler('seekforward', (details) => {
+      if (a) {
+        const skipTime = details.seekOffset || 10;
+        a.currentTime = Math.min(a.currentTime + skipTime, a.duration || Infinity);
+        setProgress(a.currentTime);
+      }
+    });
+
+    // Update position state so the OS scrubber knows elapsed/total
+    const positionInterval = setInterval(() => {
+      if (a && !isNaN(a.duration) && a.duration > 0) {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: a.duration,
+            playbackRate: a.playbackRate || 1,
+            position: Math.min(a.currentTime, a.duration),
+          });
+        } catch {
+          // Some browsers may not support setPositionState
+        }
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(positionInterval);
+      // Clearing handlers prevents them from firing after unmount
+      ms.setActionHandler('play', null);
+      ms.setActionHandler('pause', null);
+      ms.setActionHandler('previoustrack', null);
+      ms.setActionHandler('nexttrack', null);
+      ms.setActionHandler('seekto', null);
+      ms.setActionHandler('seekbackward', null);
+      ms.setActionHandler('seekforward', null);
+    };
+  }, [nextTrack, prevTrack, setIsPlaying, setProgress]);
 
   // Load track seamlessly without reloading if URL matches
   useEffect(() => {
