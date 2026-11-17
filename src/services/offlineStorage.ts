@@ -1,4 +1,5 @@
 import { Track } from '@/types/track';
+import { DEFAULT_COVER } from '@/services/api';
 
 const DB_NAME = "SMC_Offline_Vault";
 const STORE_NAME = "downloaded_tracks";
@@ -67,7 +68,7 @@ export async function saveTrackOffline(track: {
   const db = await openOfflineDB();
 
   const title = track.name || track.title || 'Unknown Track';
-  const albumArt = track.image || track.albumArt || track.artwork || '/creator.jpg';
+  const albumArt = track.image || track.albumArt || track.artwork || DEFAULT_COVER;
 
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, "readwrite");

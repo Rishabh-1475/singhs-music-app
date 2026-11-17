@@ -1,8 +1,5 @@
 import { searchJioSaavn } from '@/lib/saavn';
 
-const PRIMARY_API = "https://saavn.dev/api";
-const BACKUP_API = "https://jiosavan-api.vercel.app/api";
-
 export interface Song {
   id: string;
   name: string;
@@ -18,103 +15,133 @@ export interface Song {
   [key: string]: any;
 }
 
-function formatSongs(rawSongs: any[]): Song[] {
-  return rawSongs
-    .map((s) => {
-      // Pick highest quality audio URL (prioritize 320kbps .mp4/.m4a, fallback to 160kbps)
-      let streamUrl = "";
-      if (Array.isArray(s.downloadUrl) && s.downloadUrl.length > 0) {
-        const bestAudio =
-          s.downloadUrl.find((d: any) => d?.quality === "320kbps") ||
-          s.downloadUrl.find((d: any) => d?.quality === "160kbps") ||
-          s.downloadUrl[s.downloadUrl.length - 1];
-        streamUrl = bestAudio?.url || s.downloadUrl[0]?.url || "";
-      } else if (typeof s.downloadUrl === "string") {
-        streamUrl = s.downloadUrl;
+export const DEFAULT_COVER =
+  'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&q=80';
+
+const MIRRORS = [
+  'https://saavn.me',
+  'https://saavn.dev/api',
+  'https://jiosavan-api.vercel.app/api',
+];
+
+function sanitizeHtml(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function parseSongs(rawList: any[]): Song[] {
+  return rawList
+    .map((item: any) => {
+      // 1. Resolve Audio URL (check downloadUrl array for 320kbps at last index, then first index, fallback to media_url/url)
+      let audio = '';
+      if (Array.isArray(item.downloadUrl) && item.downloadUrl.length > 0) {
+        const high =
+          item.downloadUrl.find((d: any) => d?.quality === '320kbps') ||
+          item.downloadUrl[item.downloadUrl.length - 1];
+        audio = high?.url || item.downloadUrl[0]?.url || '';
+      } else if (typeof item.downloadUrl === 'string') {
+        audio = item.downloadUrl;
       } else {
-        streamUrl = s.media_url || s.url || "";
+        audio = item.media_url || item.url || '';
       }
 
-      // Pick highest quality cover art (500x500). If missing, fallback to /creator.jpg
-      let imgUrl = "/creator.jpg";
-      if (Array.isArray(s.image) && s.image.length > 0) {
-        const bestImg =
-          s.image.find((i: any) => i?.quality === "500x500") ||
-          s.image[s.image.length - 1];
-        imgUrl = bestImg?.url || s.image[0]?.url || imgUrl;
-      } else if (typeof s.image === "string" && s.image.trim()) {
-        imgUrl = s.image;
+      // 2. Resolve High-Res Artwork (check image array last index, then first index)
+      let art = '';
+      if (Array.isArray(item.image) && item.image.length > 0) {
+        const highArt =
+          item.image.find((i: any) => i?.quality === '500x500') ||
+          item.image[item.image.length - 1];
+        art = highArt?.url || item.image[0]?.url || '';
+      } else if (typeof item.image === 'string' && item.image.startsWith('http')) {
+        art = item.image;
       }
 
-      if (imgUrl && imgUrl !== "/creator.jpg") {
-        imgUrl = imgUrl
-          .replace("http://", "https://")
-          .replace(/150x150/g, "500x500")
-          .replace(/50x50/g, "500x500");
+      if (!art || art.trim() === '') {
+        art = DEFAULT_COVER;
+      } else {
+        // Boost resolution if URL specifies lower dimensions
+        art = art
+          .replace('http://', 'https://')
+          .replace(/150x150/g, '500x500')
+          .replace(/50x50/g, '500x500');
       }
 
-      const songName =
-        s.name?.replace(/&quot;/g, '"')?.replace(/&#039;/g, "'") ||
-        s.title ||
-        "Unknown Track";
+      const songTitle =
+        sanitizeHtml(item.name || item.title || item.song) || 'Unknown Track';
       const songArtist =
-        s.primaryArtists ||
-        s.singers ||
-        s.artist ||
-        "SMC Music";
-      const songAlbum = s.album?.name || s.album || "Single";
-      const rawId = String(s.id || `song-${Math.random().toString(36).substring(2, 9)}`);
-      const id = rawId.startsWith("saavn-") ? rawId : `saavn-${rawId}`;
+        sanitizeHtml(
+          item.primaryArtists ||
+            (Array.isArray(item.artists?.primary)
+              ? item.artists.primary.map((a: any) => a.name).join(', ')
+              : '') ||
+            item.singers ||
+            item.artist
+        ) || 'SMC Music';
+      const songAlbum =
+        sanitizeHtml(item.album?.name || item.album) || 'Single';
+
+      const rawId = String(
+        item.id || `song-${Math.random().toString(36).substring(2, 9)}`
+      );
+      const id = rawId.startsWith('saavn-') ? rawId : `saavn-${rawId}`;
 
       return {
         id,
-        name: songName,
-        title: songName,
+        name: songTitle,
+        title: songTitle,
         artist: songArtist,
         album: songAlbum,
-        image: imgUrl,
-        albumArt: imgUrl,
-        genre: s.language || "Indian Pop",
-        duration: Number(s.duration) || 0,
-        downloadUrl: streamUrl,
-        url: streamUrl,
+        image: art,
+        albumArt: art,
+        genre: item.language || 'Indian Music',
+        duration: Number(item.duration) || 0,
+        downloadUrl: audio,
+        url: audio,
       };
     })
-    // STRICT FILTER: Drop any item where downloadUrl is empty, broken, or null
-    .filter((song) => Boolean(song.downloadUrl && song.downloadUrl.trim() !== ""));
+    // STRICT FILTER: Drop any tracks where downloadUrl is empty, missing, or not an http URL
+    .filter((song) => Boolean(song.downloadUrl && song.downloadUrl.startsWith('http')));
 }
 
 export async function searchSongs(query: string): Promise<Song[]> {
   if (!query || !query.trim()) return [];
-  const sanitized = encodeURIComponent(query.trim());
+  const clean = encodeURIComponent(query.trim());
 
-  // 1. Try Primary Mirror: saavn.dev
-  try {
-    const res = await fetch(`${PRIMARY_API}/search/songs?query=${sanitized}&page=1&limit=30`, {
-      headers: { Accept: "application/json" },
-    });
-    if (res.ok) {
+  for (const mirror of MIRRORS) {
+    try {
+      const endpoint = mirror.includes('/api')
+        ? `${mirror}/search/songs?query=${clean}&page=1&limit=30`
+        : `${mirror}/search/songs?query=${clean}&page=1&limit=30`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+      const res = await fetch(endpoint, {
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      });
+      clearTimeout(timeoutId);
+
+      if (!res.ok) continue;
+
       const json = await res.json();
       const results = json?.data?.results || json?.data || [];
-      if (results.length > 0) return formatSongs(results);
+      if (Array.isArray(results) && results.length > 0) {
+        const parsed = parseSongs(results);
+        if (parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn(`Mirror ${mirror} failed, switching to backup...`, e);
     }
-  } catch (e) {
-    console.warn("Primary API mirror down, trying backup...", e);
   }
 
-  // 2. Try Backup Mirror: jiosavan-api.vercel.app
-  try {
-    const res = await fetch(`${BACKUP_API}/search/songs?query=${sanitized}`);
-    if (res.ok) {
-      const json = await res.json();
-      const results = json?.data?.results || json?.data || [];
-      if (results.length > 0) return formatSongs(results);
-    }
-  } catch (e) {
-    console.warn("Secondary API mirror failed, trying direct fallback...", e);
-  }
-
-  // 3. Fallback: Direct JioSaavn Search Scraper
+  // Direct JioSaavn Scraper Fallback
   try {
     const directResults = await searchJioSaavn(query.trim(), 30);
     if (directResults && directResults.length > 0) {
@@ -125,41 +152,51 @@ export async function searchSongs(query: string): Promise<Song[]> {
           title: t.title,
           artist: t.artist,
           album: t.album,
-          image: t.albumArt || t.image || "/creator.jpg",
-          albumArt: t.albumArt || t.image || "/creator.jpg",
-          genre: t.genre || "Indian Pop",
+          image: t.albumArt || t.image || DEFAULT_COVER,
+          albumArt: t.albumArt || t.image || DEFAULT_COVER,
+          genre: t.genre || 'Indian Music',
           duration: t.duration || 0,
           downloadUrl: t.url,
           url: t.url,
         }))
-        .filter((song) => Boolean(song.downloadUrl && song.downloadUrl.trim() !== ""));
+        .filter((song) => Boolean(song.downloadUrl && song.downloadUrl.startsWith('http')));
     }
   } catch (directErr) {
-    console.warn("Direct search fallback failed:", directErr);
+    console.warn('Direct search fallback failed:', directErr);
   }
 
   return [];
 }
 
 export async function getTrendingSongs(): Promise<Song[]> {
-  // Rotating array of trending search seeds
-  const discoverySeeds = [
-    'Top Hindi',
+  const seeds = [
+    'Top Hindi 2026',
+    'Arijit Singh Hits',
     'Sidhu Moose Wala',
-    'Arijit Singh',
-    'AP Dhillon',
     'Karan Aujla',
-    'Bollywood Hits',
-    'Punjabi Pop',
+    'AP Dhillon',
     'Diljit Dosanjh',
-    'Lo-Fi Hindi',
+    'Bollywood Romance',
+    'Punjabi Pop',
   ];
-  const randomSeed = discoverySeeds[Math.floor(Math.random() * discoverySeeds.length)];
-  return searchSongs(randomSeed);
+  const query = seeds[Math.floor(Math.random() * seeds.length)];
+  return searchSongs(query);
 }
 
-// Aliases for compatibility
+// Aliases for compatibility across other components
 export const searchTracks = searchSongs;
+
+export async function getSimilarSongs(songId: string, artist?: string): Promise<Song[]> {
+  if (artist) {
+    const primaryArtist = artist.split(',')[0].split('&')[0].trim();
+    if (primaryArtist) {
+      const results = await searchSongs(primaryArtist);
+      const filtered = results.filter((s) => s.id !== songId);
+      if (filtered.length > 0) return filtered.slice(0, 10);
+    }
+  }
+  return getTrendingSongs();
+}
 
 export function extractHighResArtwork(images: any, fallbackSeed = 'music'): string {
   let url = '';
@@ -172,22 +209,10 @@ export function extractHighResArtwork(images: any, fallbackSeed = 'music'): stri
     url = images;
   }
   if (!url || url.trim() === '') {
-    return '/creator.jpg';
+    return DEFAULT_COVER;
   }
   return url
     .replace('http://', 'https://')
     .replace(/150x150/g, '500x500')
     .replace(/50x50/g, '500x500');
-}
-
-export async function getSimilarSongs(songId: string, artist?: string): Promise<Song[]> {
-  if (artist) {
-    const primaryArtist = artist.split(',')[0].split('&')[0].trim();
-    if (primaryArtist) {
-      const results = await searchSongs(primaryArtist);
-      const filtered = results.filter((s) => s.id !== songId);
-      if (filtered.length > 0) return filtered.slice(0, 10);
-    }
-  }
-  return getTrendingSongs();
 }

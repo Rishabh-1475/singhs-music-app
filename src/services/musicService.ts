@@ -1,5 +1,4 @@
 import { Track, Artist } from '@/types/track';
-import { TRENDING_FALLBACK_TRACKS } from '@/data/tracks';
 import { getJioSaavnSong } from '@/lib/saavn';
 import { searchTracks, searchSongs, getSimilarSongs, extractHighResArtwork } from './api';
 
@@ -31,7 +30,7 @@ export async function fetchTrendingTracks(): Promise<Track[]> {
   } catch (e) {
     console.warn('Failed to fetch trending tracks:', e);
   }
-  return fisherYatesShuffle(TRENDING_FALLBACK_TRACKS);
+  return [];
 }
 
 // 3. Fetch Dynamic Mood & Language Categories
@@ -90,20 +89,16 @@ export async function fetchCategories(): Promise<MusicCategory[]> {
 
   try {
     const results = await Promise.all(
-      categoryConfigs.map(async (cat, idx) => {
+      categoryConfigs.map(async (cat) => {
         try {
           const tracks = await searchTracks(cat.query, 12);
-          const tracksToUse =
-            tracks.length > 0
-              ? fisherYatesShuffle(tracks)
-              : fisherYatesShuffle(TRENDING_FALLBACK_TRACKS.slice(idx * 2, idx * 2 + 6));
           return {
             id: cat.id,
             title: cat.title,
             subtitle: cat.subtitle,
             language: cat.language,
             query: cat.query,
-            tracks: tracksToUse,
+            tracks: tracks.length > 0 ? fisherYatesShuffle(tracks) : [],
           };
         } catch {
           return {
@@ -112,20 +107,20 @@ export async function fetchCategories(): Promise<MusicCategory[]> {
             subtitle: cat.subtitle,
             language: cat.language,
             query: cat.query,
-            tracks: fisherYatesShuffle(TRENDING_FALLBACK_TRACKS.slice(idx * 2, idx * 2 + 6)),
+            tracks: [],
           };
         }
       })
     );
     return results;
   } catch {
-    return categoryConfigs.map((cat, idx) => ({
+    return categoryConfigs.map((cat) => ({
       id: cat.id,
       title: cat.title,
       subtitle: cat.subtitle,
       language: cat.language,
       query: cat.query,
-      tracks: fisherYatesShuffle(TRENDING_FALLBACK_TRACKS.slice(idx * 2, idx * 2 + 6)),
+      tracks: [],
     }));
   }
 }

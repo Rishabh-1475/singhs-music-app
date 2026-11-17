@@ -6,6 +6,7 @@ import { Track } from '@/types/track';
 import { usePlayerStore } from '@/store/playerStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useState } from 'react';
+import { DEFAULT_COVER } from '@/services/api';
 import DownloadButton from './DownloadButton';
 
 interface TrackRowProps {
@@ -39,7 +40,7 @@ export default function TrackRow({
   const isCurrent = currentTrack?.id === track.id;
   const liked = isLiked(track.id);
   const [imgSrc, setImgSrc] = useState(
-    track.albumArt || track.artwork || track.image || '/creator.jpg'
+    track.albumArt || track.artwork || track.image || DEFAULT_COVER
   );
 
   const handlePlay = () => {
@@ -94,7 +95,7 @@ export default function TrackRow({
             alt={track.title}
             fill
             sizes="44px"
-            onError={() => setImgSrc('/creator.jpg')}
+            onError={() => setImgSrc(DEFAULT_COVER)}
             className="object-cover"
           />
         </div>

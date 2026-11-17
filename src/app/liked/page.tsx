@@ -8,7 +8,6 @@ import TrackRow from '@/components/TrackRow';
 import FooterSignature from '@/components/FooterSignature';
 import { useLibraryStore } from '@/store/libraryStore';
 import { usePlayerStore } from '@/store/playerStore';
-import { TRENDING_FALLBACK_TRACKS } from '@/data/tracks';
 import { Track } from '@/types/track';
 
 export default function LikedSongsPage() {
@@ -30,7 +29,6 @@ export default function LikedSongsPage() {
       .map(
         (id) =>
           savedTracks[id] ||
-          TRENDING_FALLBACK_TRACKS.find((t) => t.id === id) ||
           importedTracks.find((t) => t.id === id)
       )
       .filter((t): t is Track => t !== undefined);

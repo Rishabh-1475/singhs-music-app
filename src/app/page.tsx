@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
@@ -10,365 +10,117 @@ import {
   Sparkles,
   Flame,
   Radio,
-  Clock,
-  Heart,
-  ChevronRight,
+  Search,
+  X,
+  Loader2,
+  ExternalLink,
+  Instagram,
   RefreshCw,
-  Shuffle,
-  ArrowDownToLine,
+  Dumbbell,
+  Compass,
 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import SongCard from '@/components/SongCard';
 import FooterSignature from '@/components/FooterSignature';
 import ErrorBoundary from '@/components/ErrorBoundary';
-import { Track, Artist } from '@/types/track';
+import { Song, searchSongs, getTrendingSongs, DEFAULT_COVER } from '@/services/api';
 import { usePlayerStore } from '@/store/playerStore';
-import { getTopArtists } from '@/services/recommendationService';
-import { getTrendingSongs } from '@/services/api';
-import {
-  searchTracks,
-  fetchCategories,
-  fetchArtists,
-  fetchTrendingTracks,
-  MusicCategory,
-} from '@/services/musicService';
-
-const SEED_POOL = [
-  'Top Hindi',
-  'Arijit Singh',
-  'Punjabi Hype',
-  'Sidhu Moose Wala',
-  'Bollywood Lo-Fi',
-  'AP Dhillon',
-];
-
-const MOOD_CATEGORIES = [
-  {
-    id: 'all',
-    title: 'All',
-    emoji: '✨',
-    icon: Sparkles,
-  },
-  {
-    id: 'repeat',
-    title: 'On Repeat',
-    subtitle: 'Frequently played & trending hits',
-    query: 'Top Trending Hits Hindi English',
-    emoji: '🔥',
-    icon: Flame,
-  },
-  {
-    id: 'workout',
-    title: 'Gym / Workout',
-    subtitle: 'High-BPM workout, Gym motivation & Punjabi hype',
-    query: 'workout hindi gym punjabi',
-    emoji: '💪',
-    icon: Flame,
-  },
-  {
-    id: 'focus',
-    title: 'Deep Focus',
-    subtitle: 'Lo-Fi, chill instrumental & ambient study tracks',
-    query: 'lofi hindi chill acoustic',
-    emoji: '🎧',
-    icon: Radio,
-  },
-  {
-    id: 'podcasts',
-    title: 'Podcasts',
-    subtitle: 'Top Indian talk, stories & inspirational audio',
-    query: 'podcast hindi talk stories audio',
-    emoji: '🎙️',
-    icon: Clock,
-  },
-  {
-    id: 'offline',
-    title: 'Offline Vault',
-    subtitle: 'Downloaded music ready for 100% offline playback',
-    emoji: '📥',
-    icon: ArrowDownToLine,
-  },
-];
-
-function fisherYatesShuffle<T>(array: T[]): T[] {
-  const result = [...array];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
-}
-
-type CategoryData = MusicCategory;
-
-function HeroArtistPlayButton({ trendingTracks }: { trendingTracks: Track[] }) {
-  const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const currentTrackId = usePlayerStore((s) => s.currentTrack?.id);
-  const currentTrackArtist = usePlayerStore((s) => s.currentTrack?.artist);
-  const playQueue = usePlayerStore((s) => s.playQueue);
-  const togglePlay = usePlayerStore((s) => s.togglePlay);
-
-  const isHeroArtistPlaying = Boolean(
-    currentTrackArtist &&
-      (currentTrackArtist.toLowerCase().includes('arijit') ||
-        currentTrackId === trendingTracks[0]?.id) &&
-      isPlaying
-  );
-
-  const handleHeroListenNow = () => {
-    if (isHeroArtistPlaying) {
-      togglePlay();
-    } else {
-      playQueue(trendingTracks, 0);
-    }
-  };
-
-  return (
-    <button
-      onClick={handleHeroListenNow}
-      className="px-6 sm:px-8 py-3 rounded-full bg-[#1DB954] text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2.5 shadow-xl shadow-[#1DB954]/30 hover:scale-105 active:scale-95 transition-transform min-h-[44px]"
-    >
-      {isHeroArtistPlaying ? (
-        <>
-          <Pause size={18} fill="black" />
-          <span>Pause</span>
-        </>
-      ) : (
-        <>
-          <Play size={18} fill="black" className="ml-0.5" />
-          <span>Listen Now</span>
-        </>
-      )}
-    </button>
-  );
-}
 
 export default function HomePage() {
   const router = useRouter();
-  const [categories, setCategories] = useState<CategoryData[]>([]);
-  const [activeMood, setActiveMood] = useState<string>('all');
-  const [trendingTracks, setTrendingTracks] = useState<Track[]>([]);
-  const [recommendedTracks, setRecommendedTracks] = useState<Track[]>([]);
-  const [featured, setFeatured] = useState<Track[]>([]);
-  const [artists, setArtists] = useState<Artist[]>([]);
-  const [isLoadingArtists, setIsLoadingArtists] = useState(true);
-  const [isFollowing, setIsFollowing] = useState(false);
-  const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
 
-  // Recommendations state
-  const [recommendedSubtitle, setRecommendedSubtitle] = useState<string>('Personalized based on your taste');
-  const [isLoadingRecs, setIsLoadingRecs] = useState<boolean>(true);
+  // Core Track States (Guaranteed 0 mock data - initialized strictly as empty arrays)
+  const [recommendedTracks, setRecommendedTracks] = useState<Song[]>([]);
+  const [workoutTracks, setWorkoutTracks] = useState<Song[]>([]);
+  const [trendingTracks, setTrendingTracks] = useState<Song[]>([]);
+  const [searchResults, setSearchResults] = useState<Song[]>([]);
 
-  // Initial mount: load trending songs dynamically from JioSaavn V4
-  useEffect(() => {
-    let isMounted = true;
-    async function loadTrendingOnMount() {
-      try {
-        const initialSongs = await getTrendingSongs();
-        if (isMounted && initialSongs && initialSongs.length > 0) {
-          setTrendingTracks(initialSongs as unknown as Track[]);
-          setRecommendedTracks(initialSongs.slice(0, 12) as unknown as Track[]);
-          setFeatured(initialSongs.slice(0, 5) as unknown as Track[]);
-          setIsLoadingRecs(false);
-        }
-      } catch (e) {
-        console.warn('Initial trending fetch failed:', e);
-      }
-    }
-    loadTrendingOnMount();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  // Search & Loading States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingFeed, setIsLoadingFeed] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Isolate playQueue so HomePage never re-renders when tracks change or play/pause toggles
-  const playQueue = usePlayerStore((s) => s.playQueue);
+  // Player Store
+  const { playTrack, playQueue, currentTrack, isPlaying, togglePlay } = usePlayerStore();
 
-  // 1. Offline Startup Guard: automatically switch to offline vault when opened without internet
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const checkOffline = () => {
-        if (!navigator.onLine) {
-          router.push('/downloads');
-        }
-      };
-      checkOffline();
-      window.addEventListener('offline', checkOffline);
-      return () => window.removeEventListener('offline', checkOffline);
-    }
-  }, [router]);
-
-  // 2. Dynamic Shuffled Home Feed Loader: picks 3 random seeds, fetches, & Fisher-Yates shuffles
-  const loadDynamicShuffledFeed = useCallback(async () => {
-    setIsRefreshingFeed(true);
+  // 1. Dynamic Live Feed Ingestion on Mount (No static mocks)
+  const loadLiveMusicFeed = useCallback(async () => {
     try {
-      const shuffledSeeds = fisherYatesShuffle(SEED_POOL);
-      const chosenSeeds = shuffledSeeds.slice(0, 3);
+      setIsRefreshing(true);
+      const [trending, workout] = await Promise.allSettled([
+        getTrendingSongs(),
+        searchSongs('Punjabi Hype Hits'),
+      ]);
 
-      const songArrays = await Promise.all(
-        chosenSeeds.map((term) => searchTracks(term, 8))
-      );
-
-      const combined: Track[] = [];
-      const seen = new Set<string>();
-      for (const arr of songArrays) {
-        for (const t of arr) {
-          if (!seen.has(t.id)) {
-            seen.add(t.id);
-            combined.push(t);
-          }
-        }
+      if (trending.status === 'fulfilled' && trending.value.length > 0) {
+        setTrendingTracks(trending.value);
+        setRecommendedTracks(trending.value.slice(0, 12));
       }
 
-      if (combined.length > 0) {
-        const fullyShuffled = fisherYatesShuffle(combined);
-        setTrendingTracks(fullyShuffled);
+      if (workout.status === 'fulfilled' && workout.value.length > 0) {
+        setWorkoutTracks(workout.value);
       }
     } catch (err) {
-      console.warn('Failed to shuffle dynamic feed:', err);
+      console.warn('Live music feed fetch error:', err);
     } finally {
-      setIsRefreshingFeed(false);
+      setIsLoadingFeed(false);
+      setIsRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    loadDynamicShuffledFeed();
-  }, [loadDynamicShuffledFeed]);
+    loadLiveMusicFeed();
+  }, [loadLiveMusicFeed]);
 
-  // Load recommendations based on top played artists in smc_play_history
-  useEffect(() => {
-    let isMounted = true;
+  // 2. Real-Time 250ms Debounced Search
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
 
-    async function fetchRecommendations() {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    if (!val.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    debounceRef.current = setTimeout(async () => {
       try {
-        const topArtists = getTopArtists(2);
-
-        if (!topArtists || topArtists.length === 0) {
-          if (isMounted) {
-            setRecommendedTracks(trendingTracks.slice(0, 12));
-            setRecommendedSubtitle('Trending chartbusters tailored for you');
-            setIsLoadingRecs(false);
-          }
-          return;
-        }
-
-        if (isMounted) {
-          setRecommendedSubtitle(`Inspired by your favorite artists: ${topArtists.join(' & ')}`);
-          setIsLoadingRecs(true);
-        }
-
-        const results = await Promise.all(
-          topArtists.map(async (artist) => {
-            try {
-              const tracks = await searchTracks(artist, 10);
-              return tracks || [];
-            } catch (e) {
-              console.warn('Failed to fetch recommendations for artist:', artist, e);
-              return [] as Track[];
-            }
-          })
-        );
-
-        if (!isMounted) return;
-
-        const merged: Track[] = [];
-        const seen = new Set<string>();
-
-        const maxLen = Math.max(...results.map((r) => r.length), 0);
-        for (let i = 0; i < maxLen; i++) {
-          for (const list of results) {
-            if (list[i] && !seen.has(list[i].id)) {
-              seen.add(list[i].id);
-              merged.push(list[i]);
-            }
-          }
-        }
-
-        if (merged.length > 0) {
-          setRecommendedTracks(merged);
-        } else {
-          setRecommendedTracks(trendingTracks.slice(0, 12));
-        }
-      } catch (err) {
-        console.warn('Failed to load recommended tracks:', err);
-        if (isMounted) {
-          setRecommendedTracks(trendingTracks.slice(0, 12));
-        }
+        const results = await searchSongs(val.trim());
+        setSearchResults(results);
+      } catch (e) {
+        console.warn('Real-time search error:', e);
+        setSearchResults([]);
       } finally {
-        if (isMounted) setIsLoadingRecs(false);
+        setIsSearching(false);
       }
-    }
-
-    fetchRecommendations();
-
-    const handleHistoryUpdate = () => {
-      fetchRecommendations();
-    };
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('smc_history_updated', handleHistoryUpdate);
-    }
-    return () => {
-      isMounted = false;
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('smc_history_updated', handleHistoryUpdate);
-      }
-    };
-  }, [trendingTracks]);
-
-  // Load live categories & live artists via client service
-  useEffect(() => {
-    let isMounted = true;
-    async function loadData() {
-      try {
-        const [cats, arts] = await Promise.allSettled([
-          fetchCategories(),
-          fetchArtists(),
-        ]);
-
-        if (isMounted) {
-          if (cats.status === 'fulfilled' && cats.value && cats.value.length > 0) {
-            setCategories(cats.value);
-          }
-          if (arts.status === 'fulfilled' && arts.value && arts.value.length > 0) {
-            setArtists(arts.value);
-          }
-        }
-      } catch (err) {
-        console.warn('Using default music data:', err);
-      } finally {
-        if (isMounted) setIsLoadingArtists(false);
-      }
-    }
-    loadData();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const handleArtistClick = async (artistName: string) => {
-    try {
-      const list = await searchTracks(artistName, 15);
-      if (list && list.length > 0) {
-        playQueue(list, 0);
-      }
-    } catch (err) {
-      console.error(err);
-    }
+    }, 250);
   };
 
-  const displayedCategories = useMemo(() => {
-    if (activeMood === 'all') return categories;
-    const filtered = categories.filter((c) => c.id === activeMood);
-    return filtered.length > 0 ? filtered : categories;
-  }, [categories, activeMood]);
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsSearching(false);
+  };
 
-  const handleShuffleCategory = (catId: string) => {
-    setCategories((prev) =>
-      prev.map((cat) =>
-        cat.id === catId ? { ...cat, tracks: fisherYatesShuffle(cat.tracks) } : cat
-      )
-    );
+  // Hero Spotlight playback
+  const heroSong = trendingTracks[0] || recommendedTracks[0];
+  const isHeroPlaying = Boolean(
+    heroSong && currentTrack?.id === heroSong.id && isPlaying
+  );
+
+  const handleHeroListenNow = () => {
+    if (!heroSong) return;
+    if (isHeroPlaying) {
+      togglePlay();
+    } else {
+      playTrack(heroSong, trendingTracks.length > 0 ? trendingTracks : [heroSong]);
+    }
   };
 
   return (
@@ -376,362 +128,318 @@ export default function HomePage() {
       {/* Top Navbar */}
       <Navbar />
 
-      {/* Main Scrollable Content */}
-      <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 sm:py-6 pb-36 md:pb-20 space-y-8 sm:space-y-10 scroll-smooth">
-        <ErrorBoundary fallbackTitle="Spotlight Banner Unavailable">
-          {/* 1. Sleek 2.5D/3D Styled Headline Banner */}
-          <section className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#16191E] via-[#1a1f28] to-[#16191E] border border-[#22262F] p-5 sm:p-8 shadow-xl">
-          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="h-2 w-2 rounded-full bg-[#1DB954] animate-ping" />
-                <span className="text-[10px] sm:text-[11px] font-mono font-bold tracking-widest text-[#1DB954] uppercase">
-                  OFFICIAL STREAM ARCHIVE &bull; 320 KBPS LOSSLESS
+      {/* Main Scrollable View Area */}
+      <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 sm:py-6 pb-36 md:pb-24 space-y-8 sm:space-y-10 scroll-smooth">
+        {/* Real-time In-Page Search Bar */}
+        <section className="relative w-full max-w-2xl mx-auto">
+          <div className="relative flex items-center w-full">
+            <Search
+              size={18}
+              className="absolute left-4 text-emerald-400 pointer-events-none"
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Search songs, artists, Punjabi hits, Bollywood..."
+              className="w-full bg-[#16191E] hover:bg-[#1a1f26] focus:bg-[#1c222c] border border-[#22262F] focus:border-emerald-500/80 text-sm sm:text-base text-white placeholder:text-neutral-500 rounded-full py-3.5 pl-11 pr-11 outline-none transition-all shadow-xl shadow-black/40 font-medium"
+            />
+            {isSearching ? (
+              <Loader2
+                size={18}
+                className="absolute right-4 text-emerald-400 animate-spin"
+              />
+            ) : searchQuery ? (
+              <button
+                onClick={handleClearSearch}
+                className="absolute right-4 text-neutral-400 hover:text-white transition-colors"
+                title="Clear search"
+              >
+                <X size={18} />
+              </button>
+            ) : null}
+          </div>
+        </section>
+
+        {/* PROMINENT SEARCH RESULTS GRID (Displayed when user is searching) */}
+        {searchQuery.trim() !== '' ? (
+          <ErrorBoundary fallbackTitle="Search Results Unavailable">
+            <section className="space-y-4">
+              <div className="flex items-center justify-between border-b border-[#22262F] pb-3">
+                <div className="flex items-center gap-2.5">
+                  <Compass size={22} className="text-emerald-400" />
+                  <h2 className="text-lg sm:text-2xl font-bold text-white tracking-tight">
+                    Search Results for &quot;{searchQuery}&quot;
+                  </h2>
+                </div>
+                <span className="text-xs text-neutral-400 font-mono">
+                  {searchResults.length} tracks found
                 </span>
               </div>
 
-              {/* 2.5D Layered 3D Headline */}
-              <h1 className="text-2xl sm:text-4xl md:text-5xl font-black uppercase tracking-tight text-white drop-shadow-[0_4px_16px_rgba(29,185,84,0.35)]">
-                Welcome to Singh&apos;s Music Company
-              </h1>
-              <p className="text-xs sm:text-base font-medium text-neutral-300 mt-1.5 sm:mt-2">
-                The Best Lag-Free Music Experience &bull; Direct Online JioSaavn Streaming
-              </p>
-            </div>
-
-            {/* Creator Badge & Stats */}
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-3 bg-[#0D0F11]/80 border border-[#1DB954]/50 px-3.5 py-1.5 rounded-full shadow-lg">
-                <div className="relative w-8 h-8 rounded-full overflow-hidden border border-[#1DB954] flex-shrink-0">
-                  <Image
-                    src="/creator.jpg"
-                    alt="Rishabh Singh"
-                    fill
-                    className="object-cover"
-                  />
-                </div>
-                <div className="flex flex-col text-left">
-                  <span className="text-[9px] font-mono font-bold text-[#1DB954] uppercase">
-                    Creator &bull; Founder
-                  </span>
-                  <span className="text-xs font-bold text-white">
-                    Rishabh Singh
-                  </span>
-                </div>
-              </div>
-
-              <div className="hidden lg:flex items-center gap-2">
-                <div className="px-3.5 py-1.5 rounded-xl bg-white/5 border border-white/10 text-center">
-                  <span className="block text-base font-black text-[#1DB954]">100%</span>
-                  <span className="text-[9px] text-neutral-400 uppercase font-mono">Zero Ads</span>
-                </div>
-                <div className="px-3.5 py-1.5 rounded-xl bg-white/5 border border-white/10 text-center">
-                  <span className="block text-base font-black text-white">320k</span>
-                  <span className="text-[9px] text-neutral-400 uppercase font-mono">Lossless</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Dynamic Mood Categories & Filter Pills */}
-        <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-1 -mx-4 px-4 sm:mx-0 sm:px-0">
-          {MOOD_CATEGORIES.map((mood) => {
-            const isSelected = activeMood === mood.id;
-            return (
-              <button
-                key={mood.id}
-                onClick={() => {
-                  if (mood.id === 'offline') {
-                    router.push('/downloads');
-                  } else {
-                    setActiveMood(mood.id);
-                  }
-                }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold tracking-wide whitespace-nowrap transition-all duration-200 cursor-pointer shadow-sm ${
-                  isSelected
-                    ? 'bg-emerald-500 text-black shadow-emerald-500/25 scale-105'
-                    : 'bg-[#16191E] text-neutral-300 hover:text-white border border-[#22262F] hover:border-neutral-500 hover:bg-[#1f242d]'
-                }`}
-              >
-                <span>{mood.emoji}</span>
-                <span>{mood.title}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* 2. Large Featured Artist Spotlight Card (Wiz Khalifa / Beyond Time reference) */}
-        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#0c1410] via-[#121c16] to-[#16191E] border border-[#22262F] p-6 sm:p-10 shadow-2xl">
-          {/* Ambient Blurred Glow Backdrop */}
-          <div className="absolute -right-16 -top-16 w-96 h-96 bg-[#1DB954]/20 rounded-full blur-[100px] pointer-events-none" />
-
-          <div className="relative z-10 grid grid-cols-1 md:grid-cols-12 gap-6 sm:gap-8 items-center">
-            {/* Left Artist Details */}
-            <div className="md:col-span-7 space-y-3 sm:space-y-4">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-xs font-semibold text-white">
-                <CheckCircle2 size={15} className="text-[#1DB954]" />
-                <span>Verified Artist</span>
-              </div>
-
-              <div>
-                <h2 className="text-3xl sm:text-5xl md:text-6xl font-black text-white tracking-tight uppercase leading-none">
-                  Arijit Singh
-                </h2>
-                <p className="text-xs sm:text-base font-semibold text-neutral-300 mt-2 sm:mt-3 flex items-center gap-2 flex-wrap">
-                  <span>38,421,980 monthly listeners</span>
-                  <span>&bull;</span>
-                  <span className="text-[#1DB954]">#1 Most Streamed</span>
-                </p>
-                <p className="text-xs sm:text-sm text-neutral-400 mt-2 line-clamp-2 max-w-lg">
-                  Experience the soul of Indian music with chartbuster anthems from KING, Dhurandhar, Ramayana, and classic romantic acoustic flips.
-                </p>
-              </div>
-
-              {/* Action Buttons: Listen Now & Follow */}
-              <div className="flex items-center gap-3 sm:gap-4 pt-2">
-                <HeroArtistPlayButton trendingTracks={trendingTracks} />
-
-                <button
-                  onClick={() => setIsFollowing(!isFollowing)}
-                  className={`px-6 sm:px-7 py-3 rounded-full font-bold text-xs sm:text-sm tracking-wider uppercase transition-colors border min-h-[44px] ${
-                    isFollowing
-                      ? 'border-[#1DB954] text-[#1DB954] bg-[#1DB954]/10'
-                      : 'border-white/30 text-white hover:border-white hover:bg-white/5'
-                  }`}
-                >
-                  {isFollowing ? 'Following' : 'Follow'}
-                </button>
-              </div>
-            </div>
-
-            {/* Right Artist Cutout/Backdrop Image */}
-            <div className="md:col-span-5 flex justify-center md:justify-end">
-              <div className="relative w-48 h-48 sm:w-64 sm:h-64 rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-neutral-900 group">
-                <Image
-                  src={artists[0]?.image || 'https://c.saavncdn.com/artists/Arijit_Singh_004_20241118063717_500x500.jpg'}
-                  alt="Arijit Singh"
-                  fill
-                  priority
-                  className="object-cover group-hover:scale-105 transition-transform duration-500"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-4">
-                  <span className="text-xs font-mono font-bold text-white uppercase tracking-wider">
-                    Spotlight Edition
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-        </ErrorBoundary>
-
-        {/* 3. Dynamic Section: "Made For You (Recommended)" */}
-        <ErrorBoundary fallbackTitle="Recommended Feed Unavailable">
-          <section className="space-y-3 sm:space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <Sparkles size={22} className="text-emerald-400" />
-                <div>
-                  <h2 className="text-lg sm:text-2xl font-bold text-white tracking-tight">
-                    Made For You (Recommended)
-                  </h2>
-                  <p className="text-xs text-neutral-400 mt-0.5">
-                    {recommendedSubtitle}
-                  </p>
-                </div>
-              </div>
-              <span className="text-xs font-bold text-neutral-400 hover:text-white uppercase tracking-wider cursor-pointer hidden sm:block">
-                See all
-              </span>
-            </div>
-
-            {isLoadingRecs ? (
-              <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 md:gap-4 snap-x snap-mandatory">
-                {Array.from({ length: 6 }).map((_, idx) => (
-                  <div
-                    key={`rec-skeleton-${idx}`}
-                    className="min-w-[150px] sm:min-w-[170px] md:min-w-0 flex-shrink-0 snap-start flex flex-col p-3.5 rounded-2xl bg-[#16191E] border border-[#22262F] animate-pulse"
-                  >
-                    <div className="aspect-square w-full rounded-xl bg-zinc-800" />
-                    <div className="mt-3 w-3/4 h-3.5 bg-zinc-800 rounded-full" />
-                    <div className="mt-1.5 w-1/2 h-2.5 bg-zinc-800/60 rounded-full" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 md:gap-4 snap-x snap-mandatory">
-                {recommendedTracks.map((track) => (
-                  <div
-                    key={`rec-${track.id}`}
-                    className="min-w-[150px] sm:min-w-[170px] md:min-w-0 flex-shrink-0 snap-start"
-                  >
-                    <SongCard
-                      track={track}
-                      tracks={recommendedTracks}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </ErrorBoundary>
-
-        {/* 4. Horizontal Grid / Carousel: Dynamic Shuffled Feed */}
-        <ErrorBoundary fallbackTitle="Feed Unavailable">
-          <section className="space-y-3 sm:space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <Flame size={22} className="text-emerald-400" />
-                <div>
-                  <h2 className="text-lg sm:text-2xl font-bold text-white tracking-tight">
-                    Fresh Discoveries
-                  </h2>
-                  <p className="text-xs text-neutral-400 mt-0.5">
-                    Live randomized mix rotated across top chart seeds
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={loadDynamicShuffledFeed}
-                disabled={isRefreshingFeed}
-                className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 active:scale-95 transition-all text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50"
-                title="Shuffle and refresh feed"
-              >
-                <RefreshCw size={13} className={isRefreshingFeed ? 'animate-spin' : ''} />
-                <span>{isRefreshingFeed ? 'Shuffling...' : 'Refresh Feed'}</span>
-              </button>
-            </div>
-
-            <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 md:gap-4 snap-x snap-mandatory">
-              {trendingTracks.slice(0, 12).map((track) => (
-                <div
-                  key={track.id}
-                  className="min-w-[150px] sm:min-w-[170px] md:min-w-0 flex-shrink-0 snap-start"
-                >
-                  <SongCard
-                    track={track}
-                    tracks={trendingTracks}
-                  />
-                </div>
-              ))}
-            </div>
-          </section>
-        </ErrorBoundary>
-
-        {/* 4. Circular Artist Avatars: "Fans also like" */}
-        <ErrorBoundary fallbackTitle="Featured Artists Unavailable">
-          <section className="space-y-3 sm:space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg sm:text-2xl font-bold text-white tracking-tight">
-                Fans also like
-              </h2>
-              <span className="text-xs font-bold text-neutral-400 hover:text-white uppercase tracking-wider cursor-pointer">
-                Show all
-              </span>
-            </div>
-
-            {isLoadingArtists ? (
-              /* Sleek Circular Skeleton Loader with Dark Shimmer */
-              <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-6 md:gap-4 snap-x snap-mandatory">
-                {Array.from({ length: 8 }).map((_, idx) => (
-                  <div
-                    key={`artist-skeleton-${idx}`}
-                    className="min-w-[135px] sm:min-w-[155px] md:min-w-0 flex-shrink-0 snap-start flex flex-col items-center text-center p-3.5 sm:p-4 rounded-2xl bg-[#16191E] border border-[#22262F] animate-pulse"
-                  >
-                    <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full aspect-square bg-zinc-800" />
-                    <div className="mt-3 w-20 h-3.5 bg-zinc-800 rounded-full" />
-                    <div className="mt-1.5 w-12 h-2.5 bg-zinc-800/60 rounded-full" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              /* Live Dynamic Artists fetched from API */
-              <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-6 md:gap-4 snap-x snap-mandatory">
-                {artists.map((artist) => (
-                  <div
-                    key={artist.id}
-                    onClick={() => handleArtistClick(artist.name)}
-                    className="min-w-[135px] sm:min-w-[155px] md:min-w-0 flex-shrink-0 snap-start group flex flex-col items-center text-center p-3.5 sm:p-4 rounded-2xl bg-[#16191E] border border-[#22262F] hover:border-neutral-500 hover:bg-[#1c2027] transition-all cursor-pointer shadow-sm hover:shadow-xl hover:-translate-y-1 select-none"
-                  >
-                    <div className="relative w-24 h-24 sm:w-32 sm:h-32 rounded-full aspect-square overflow-hidden bg-neutral-900 border-2 border-transparent group-hover:border-[#1DB954] shadow-md transition-all">
-                      <Image
-                        src={artist.image}
-                        alt={artist.name}
-                        fill
-                        sizes="(max-width: 768px) 128px, 150px"
-                        className="rounded-full aspect-square object-cover shadow-md group-hover:scale-105 transition-transform duration-200"
-                      />
-                      {/* Floating Play Overlay on Artist Avatar */}
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div className="w-10 h-10 rounded-full bg-[#1DB954] text-black flex items-center justify-center shadow-lg">
-                          <Play size={18} fill="black" className="ml-0.5" />
-                        </div>
-                      </div>
+              {isSearching ? (
+                /* Skeleton Placeholders */
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5 sm:gap-4">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div
+                      key={`search-skeleton-${i}`}
+                      className="p-3 rounded-2xl bg-[#16191E] border border-[#22262F] animate-pulse"
+                    >
+                      <div className="aspect-square w-full rounded-xl bg-neutral-800" />
+                      <div className="mt-3 w-3/4 h-3.5 bg-neutral-800 rounded-full" />
+                      <div className="mt-1.5 w-1/2 h-2.5 bg-neutral-800/60 rounded-full" />
                     </div>
-
-                    <div className="mt-2.5 sm:mt-3 min-w-0 w-full">
-                      <p className="font-bold text-xs sm:text-sm text-white truncate group-hover:text-[#1DB954] transition-colors">
-                        {artist.name}
-                      </p>
-                      <p className="text-[11px] sm:text-xs text-neutral-400 truncate mt-0.5">
-                        {artist.role || 'Artist'}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </ErrorBoundary>
-
-        {/* 5. Dynamic Mood & Genre Shelves (Gym/Workout, Deep Focus, Podcasts, Hindi, Punjabi, English) */}
-        <ErrorBoundary fallbackTitle="Shelves Unavailable">
-          {displayedCategories.map((cat) => (
-            <section key={cat.id} className="space-y-3 sm:space-y-4">
-              <div className="flex items-end justify-between">
-                <div>
-                  <h2 className="text-lg sm:text-2xl font-bold text-white tracking-tight hover:underline cursor-pointer">
-                    {cat.title}
-                  </h2>
-                  <p className="text-xs sm:text-sm text-neutral-400 mt-0.5">
-                    {cat.subtitle}
+                  ))}
+                </div>
+              ) : searchResults.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5 sm:gap-4">
+                  {searchResults.map((song) => (
+                    <SongCard
+                      key={`search-${song.id}`}
+                      song={song}
+                      allSongs={searchResults}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="py-16 text-center text-neutral-400 space-y-2">
+                  <p className="text-base font-semibold text-neutral-300">
+                    No results found for &quot;{searchQuery}&quot;
+                  </p>
+                  <p className="text-xs text-neutral-500">
+                    Try searching for an artist like Arijit Singh, Sidhu Moose Wala, or a song title.
                   </p>
                 </div>
-                <div className="flex items-center gap-2.5">
-                  <button
-                    onClick={() => handleShuffleCategory(cat.id)}
-                    className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white border border-white/5 text-[11px] font-semibold transition-colors cursor-pointer"
-                    title="Shuffle songs in this collection"
-                  >
-                    <Shuffle size={12} className="text-emerald-400" />
-                    <span>Shuffle</span>
-                  </button>
-                  <span className="text-xs font-bold text-neutral-400 hover:text-white uppercase tracking-wider cursor-pointer hidden sm:block">
-                    Show all
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 md:gap-4 snap-x snap-mandatory">
-                {cat.tracks.slice(0, 10).map((track) => (
-                  <div
-                    key={`${cat.id}-${track.id}`}
-                    className="min-w-[150px] sm:min-w-[170px] md:min-w-0 flex-shrink-0 snap-start"
-                  >
-                    <SongCard
-                      track={track}
-                      tracks={cat.tracks}
-                    />
-                  </div>
-                ))}
-              </div>
+              )}
             </section>
-          ))}
-        </ErrorBoundary>
+          </ErrorBoundary>
+        ) : (
+          /* DEFAULT HOME FEED: Dynamic sections with zero mock data */
+          <>
+            {/* 1. Header Headline & Creator Spotlight Banner */}
+            <ErrorBoundary fallbackTitle="Spotlight Banner Unavailable">
+              <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#111418] via-[#161b22] to-[#12161c] border border-[#22262F] p-6 sm:p-8 shadow-2xl">
+                <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                  {/* Left Headline */}
+                  <div className="space-y-2">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[10px] sm:text-xs font-mono font-bold tracking-widest text-emerald-400 uppercase">
+                      <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+                      <span>OFFICIAL 320 KBPS LOSSLESS STREAM ARCHIVE</span>
+                    </div>
 
-        {/* 6. Centered Minimalist Footer: "Made with ❤️ by Rishabh Singh" */}
+                    <h1 className="text-2xl sm:text-4xl md:text-5xl font-black uppercase tracking-tight text-white drop-shadow-[0_4px_16px_rgba(16,185,129,0.25)]">
+                      Singh&apos;s Music Company
+                    </h1>
+                    <p className="text-xs sm:text-base font-medium text-neutral-300 max-w-xl">
+                      Ultra-Fast &bull; 100% Free &bull; Ad-Free JioSaavn V4 Streaming &bull; Offline Music Vault
+                    </p>
+
+                    {heroSong && (
+                      <div className="pt-2">
+                        <button
+                          onClick={handleHeroListenNow}
+                          className="px-6 sm:px-8 py-3 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2.5 shadow-xl shadow-emerald-500/30 hover:scale-105 active:scale-95 transition-all min-h-[44px]"
+                        >
+                          {isHeroPlaying ? (
+                            <>
+                              <Pause size={18} fill="black" />
+                              <span>Pause Stream</span>
+                            </>
+                          ) : (
+                            <>
+                              <Play size={18} fill="black" className="ml-0.5" />
+                              <span>Listen Now: {heroSong.name}</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Creator Spotlight Profile Card: 48px round creator avatar */}
+                  <div className="flex items-center gap-4 bg-[#0D0F11]/90 border border-emerald-500/40 p-4 rounded-2xl shadow-xl flex-shrink-0">
+                    {/* Enlarged 48px Profile Avatar with Glowing Emerald Ring */}
+                    <div className="relative w-12 h-12 rounded-full overflow-hidden bg-neutral-800 border-2 border-emerald-400 shadow-lg shadow-emerald-500/30 flex-shrink-0">
+                      <Image
+                        src="/creator.jpg"
+                        alt="Rishabh Singh"
+                        fill
+                        priority
+                        className="object-cover"
+                      />
+                    </div>
+
+                    <div className="flex flex-col text-left">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-extrabold text-white">
+                          Rishabh Singh
+                        </span>
+                        <CheckCircle2 size={15} className="text-emerald-400" />
+                      </div>
+                      <span className="text-[11px] font-mono text-emerald-400 font-semibold uppercase">
+                        Founder &amp; Lead Dev
+                      </span>
+                      <a
+                        href="https://www.instagram.com/rish4bhsiingh/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 inline-flex items-center gap-1 text-[11px] text-neutral-300 hover:text-emerald-400 transition-colors font-medium"
+                      >
+                        <Instagram size={12} className="text-pink-400" />
+                        <span>@rish4bhsiingh</span>
+                        <ExternalLink size={10} className="ml-0.5 text-neutral-500" />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </ErrorBoundary>
+
+            {/* 2. FRESH DISCOVERIES (Trending Songs Feed) */}
+            <ErrorBoundary fallbackTitle="Discoveries Unavailable">
+              <section className="space-y-3 sm:space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Flame size={22} className="text-emerald-400" />
+                    <div>
+                      <h2 className="text-lg sm:text-2xl font-bold text-white tracking-tight">
+                        Fresh Discoveries
+                      </h2>
+                      <p className="text-xs text-neutral-400 mt-0.5">
+                        Live dynamic chartbusters rotated continuously
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={loadLiveMusicFeed}
+                    disabled={isRefreshing}
+                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 active:scale-95 transition-all text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50"
+                    title="Refresh dynamic feed"
+                  >
+                    <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
+                    <span>{isRefreshing ? 'Loading...' : 'Refresh'}</span>
+                  </button>
+                </div>
+
+                {isLoadingFeed ? (
+                  /* Skeleton Pulses (Never Mock Data) */
+                  <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-6 md:gap-4 snap-x snap-mandatory">
+                    {Array.from({ length: 6 }).map((_, idx) => (
+                      <div
+                        key={`trend-skel-${idx}`}
+                        className="min-w-[150px] sm:min-w-[170px] md:min-w-0 flex-shrink-0 snap-start flex flex-col p-3 rounded-2xl bg-[#16191E] border border-[#22262F] animate-pulse"
+                      >
+                        <div className="aspect-square w-full rounded-xl bg-neutral-800" />
+                        <div className="mt-3 w-3/4 h-3.5 bg-neutral-800 rounded-full" />
+                        <div className="mt-1.5 w-1/2 h-2.5 bg-neutral-800/60 rounded-full" />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-6 md:gap-4 snap-x snap-mandatory">
+                    {trendingTracks.slice(0, 12).map((song) => (
+                      <div
+                        key={song.id}
+                        className="min-w-[150px] sm:min-w-[170px] md:min-w-0 flex-shrink-0 snap-start"
+                      >
+                        <SongCard song={song} allSongs={trendingTracks} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </ErrorBoundary>
+
+            {/* 3. MADE FOR YOU (RECOMMENDED) */}
+            <ErrorBoundary fallbackTitle="Recommendations Unavailable">
+              <section className="space-y-3 sm:space-y-4">
+                <div className="flex items-center gap-2.5">
+                  <Sparkles size={22} className="text-emerald-400" />
+                  <div>
+                    <h2 className="text-lg sm:text-2xl font-bold text-white tracking-tight">
+                      Made For You (Recommended)
+                    </h2>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      Personalized recommendations based on trending chart seeds
+                    </p>
+                  </div>
+                </div>
+
+                {isLoadingFeed ? (
+                  <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-6 md:gap-4 snap-x snap-mandatory">
+                    {Array.from({ length: 6 }).map((_, idx) => (
+                      <div
+                        key={`rec-skel-${idx}`}
+                        className="min-w-[150px] sm:min-w-[170px] md:min-w-0 flex-shrink-0 snap-start flex flex-col p-3 rounded-2xl bg-[#16191E] border border-[#22262F] animate-pulse"
+                      >
+                        <div className="aspect-square w-full rounded-xl bg-neutral-800" />
+                        <div className="mt-3 w-3/4 h-3.5 bg-neutral-800 rounded-full" />
+                        <div className="mt-1.5 w-1/2 h-2.5 bg-neutral-800/60 rounded-full" />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-6 md:gap-4 snap-x snap-mandatory">
+                    {recommendedTracks.map((song) => (
+                      <div
+                        key={`rec-${song.id}`}
+                        className="min-w-[150px] sm:min-w-[170px] md:min-w-0 flex-shrink-0 snap-start"
+                      >
+                        <SongCard song={song} allSongs={recommendedTracks} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </ErrorBoundary>
+
+            {/* 4. WORKOUT & GYM MOTIVATION (Dynamic) */}
+            <ErrorBoundary fallbackTitle="Workout Tracks Unavailable">
+              <section className="space-y-3 sm:space-y-4">
+                <div className="flex items-center gap-2.5">
+                  <Dumbbell size={22} className="text-emerald-400" />
+                  <div>
+                    <h2 className="text-lg sm:text-2xl font-bold text-white tracking-tight">
+                      Gym &amp; Workout Motivation
+                    </h2>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      High-BPM Punjabi hype and workout bangers
+                    </p>
+                  </div>
+                </div>
+
+                {isLoadingFeed ? (
+                  <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-6 md:gap-4 snap-x snap-mandatory">
+                    {Array.from({ length: 6 }).map((_, idx) => (
+                      <div
+                        key={`work-skel-${idx}`}
+                        className="min-w-[150px] sm:min-w-[170px] md:min-w-0 flex-shrink-0 snap-start flex flex-col p-3 rounded-2xl bg-[#16191E] border border-[#22262F] animate-pulse"
+                      >
+                        <div className="aspect-square w-full rounded-xl bg-neutral-800" />
+                        <div className="mt-3 w-3/4 h-3.5 bg-neutral-800 rounded-full" />
+                        <div className="mt-1.5 w-1/2 h-2.5 bg-neutral-800/60 rounded-full" />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex overflow-x-auto no-scrollbar gap-3.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 md:grid md:grid-cols-4 lg:grid-cols-6 md:gap-4 snap-x snap-mandatory">
+                    {workoutTracks.map((song) => (
+                      <div
+                        key={`workout-${song.id}`}
+                        className="min-w-[150px] sm:min-w-[170px] md:min-w-0 flex-shrink-0 snap-start"
+                      >
+                        <SongCard song={song} allSongs={workoutTracks} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </ErrorBoundary>
+          </>
+        )}
+
+        {/* Footer Signature */}
         <FooterSignature />
       </div>
     </div>

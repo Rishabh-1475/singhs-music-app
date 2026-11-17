@@ -7,6 +7,7 @@ import TopNav from '@/components/TopNav';
 import FooterSignature from '@/components/FooterSignature';
 import { usePlayerStore } from '@/store/playerStore';
 import { Track } from '@/types/track';
+import { DEFAULT_COVER } from '@/services/api';
 import {
   getDownloadedTracks,
   deleteOfflineTrack,
@@ -177,7 +178,7 @@ export default function DownloadsPage() {
                   <div className="col-span-6 sm:col-span-5 flex items-center gap-3 min-w-0 pr-2">
                     <div className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-neutral-900">
                       <Image
-                        src={track.albumArt || '/creator.jpg'}
+                        src={track.albumArt || DEFAULT_COVER}
                         alt={track.title}
                         fill
                         className="object-cover"

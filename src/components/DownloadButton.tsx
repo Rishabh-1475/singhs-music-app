@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowDownToLine, Check, Loader2 } from 'lucide-react';
 import { Track } from '@/types/track';
+import { DEFAULT_COVER } from '@/services/api';
 import {
   saveTrackOffline,
   deleteOfflineTrack,
@@ -63,7 +64,7 @@ export default function DownloadButton({
           name: track.title || track.name,
           artist: track.artist,
           album: track.album,
-          image: track.albumArt || track.artwork || track.image || '/creator.jpg',
+          image: track.albumArt || track.artwork || track.image || DEFAULT_COVER,
           downloadUrl: urlToFetch,
           duration: track.duration,
         });

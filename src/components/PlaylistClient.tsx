@@ -8,7 +8,6 @@ import TrackRow from '@/components/TrackRow';
 import FooterSignature from '@/components/FooterSignature';
 import { useLibraryStore } from '@/store/libraryStore';
 import { usePlayerStore } from '@/store/playerStore';
-import { TRENDING_FALLBACK_TRACKS } from '@/data/tracks';
 import { useState, useMemo, useEffect } from 'react';
 import { Track } from '@/types/track';
 import { searchTracks } from '@/services/musicService';
@@ -43,7 +42,6 @@ export default function PlaylistClient() {
       .map(
         (tid) =>
           savedTracks[tid] ||
-          TRENDING_FALLBACK_TRACKS.find((t) => t.id === tid) ||
           importedTracks.find((t) => t.id === tid)
       )
       .filter((t): t is Track => t !== undefined);

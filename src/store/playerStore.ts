@@ -1,84 +1,9 @@
 import { create } from 'zustand';
-
-export interface Song {
-  id: string;
-  name?: string;
-  title?: string;
-  artist?: string;
-  album?: string;
-  image?: string;
-  albumArt?: string;
-  genre?: string;
-  duration?: number;
-  downloadUrl?: string;
-  url?: string;
-  [key: string]: any;
-}
-
-let globalAudio: HTMLAudioElement | null = null;
-
-if (typeof window !== 'undefined') {
-  globalAudio = new Audio();
-  globalAudio.preload = 'auto';
-}
-
-export { globalAudio };
-
-export function syncMediaSession(
-  song: Song,
-  onPlay: () => void,
-  onPause: () => void,
-  onNext: () => void,
-  onPrev: () => void
-) {
-  if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
-    const trackName = song.name || song.title || 'Unknown Track';
-    const artistName = song.artist || 'SMC Music';
-    const albumName = song.album || 'Single';
-    const artUrl = song.albumArt || song.image || '/creator.jpg';
-
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: trackName,
-      artist: artistName,
-      album: albumName,
-      artwork: [
-        { src: artUrl, sizes: '96x96', type: 'image/jpeg' },
-        { src: artUrl, sizes: '192x192', type: 'image/jpeg' },
-        { src: artUrl, sizes: '512x512', type: 'image/jpeg' },
-      ],
-    });
-
-    navigator.mediaSession.setActionHandler('play', onPlay);
-    navigator.mediaSession.setActionHandler('pause', onPause);
-    navigator.mediaSession.setActionHandler('nexttrack', onNext);
-    navigator.mediaSession.setActionHandler('previoustrack', onPrev);
-    navigator.mediaSession.setActionHandler('seekto', (details) => {
-      if (details.seekTime && globalAudio) {
-        globalAudio.currentTime = details.seekTime;
-      }
-    });
-  }
-}
-
-function sanitizeSong(raw: any): Song {
-  const cover = raw.albumArt || raw.image || '/creator.jpg';
-  return {
-    ...raw,
-    id: String(raw.id || Math.random()),
-    name: raw.name || raw.title || 'Unknown Track',
-    artist: raw.artist || raw.singers || 'SMC Music',
-    album: raw.album?.name || raw.album || 'Single',
-    image: cover,
-    albumArt: cover,
-    genre: raw.genre || 'Indian Pop',
-    duration: Number(raw.duration) || 0,
-    downloadUrl: raw.downloadUrl || raw.url || raw.media_url || '',
-  };
-}
+import { Song, DEFAULT_COVER } from '@/services/api';
 
 export type RepeatMode = 'off' | 'all' | 'one';
 
-interface PlayerState {
+export interface PlayerState {
   currentTrack: Song | null;
   isPlaying: boolean;
   queue: Song[];
@@ -91,22 +16,102 @@ interface PlayerState {
   repeatMode: RepeatMode;
   isShuffled: boolean;
   isQueueOpen: boolean;
+  showQueue?: boolean;
+  showFullScreen?: boolean;
+
   playTrack: (song: any, queueList?: any[]) => void;
   playQueue: (songs: any[], startIndex?: number) => void;
   togglePlay: () => void;
   playNext: () => void;
-  playPrev: () => void;
   nextTrack: () => void;
+  playPrev: () => void;
   prevTrack: () => void;
   seek: (seconds: number) => void;
   setVolume: (vol: number) => void;
   toggleMute: () => void;
   setProgress: (prog: number) => void;
+  setDuration?: (dur: number) => void;
+  setIsPlaying?: (playing: boolean) => void;
   toggleRepeat: () => void;
   toggleShuffle: () => void;
   toggleQueue: () => void;
+  toggleFullScreen?: () => void;
   clearQueue: () => void;
+
   [key: string]: any;
+}
+
+// Global Singleton HTML5 Audio instance
+let globalAudio: HTMLAudioElement | null = null;
+if (typeof window !== 'undefined') {
+  globalAudio = new Audio();
+  globalAudio.preload = 'auto';
+  globalAudio.crossOrigin = 'anonymous';
+}
+export { globalAudio };
+
+function normalizeSong(raw: any): Song {
+  const art =
+    raw.albumArt ||
+    raw.image ||
+    raw.artwork ||
+    DEFAULT_COVER;
+  const name = raw.name || raw.title || 'Unknown Track';
+  const artist = raw.artist || raw.singers || 'SMC Music';
+  const album = raw.album?.name || raw.album || 'Single';
+  const audio = raw.downloadUrl || raw.url || raw.media_url || '';
+
+  return {
+    ...raw,
+    id: String(raw.id || `song-${Math.random().toString(36).substring(2, 9)}`),
+    name,
+    title: name,
+    artist,
+    album,
+    image: art,
+    albumArt: art,
+    genre: raw.genre || 'Indian Music',
+    duration: Number(raw.duration) || 0,
+    downloadUrl: audio,
+    url: audio,
+  };
+}
+
+function syncMediaSession(
+  song: Song,
+  onPlay: () => void,
+  onPause: () => void,
+  onNext: () => void,
+  onPrev: () => void,
+  onSeek: (time: number) => void
+) {
+  if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
+
+  const artUrl = song.albumArt || song.image || DEFAULT_COVER;
+
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: song.name || song.title || 'Unknown Track',
+    artist: song.artist || 'SMC Music',
+    album: song.album || 'Single',
+    artwork: [
+      { src: artUrl, sizes: '96x96', type: 'image/jpeg' },
+      { src: artUrl, sizes: '128x128', type: 'image/jpeg' },
+      { src: artUrl, sizes: '192x192', type: 'image/jpeg' },
+      { src: artUrl, sizes: '256x256', type: 'image/jpeg' },
+      { src: artUrl, sizes: '384x384', type: 'image/jpeg' },
+      { src: artUrl, sizes: '512x512', type: 'image/jpeg' },
+    ],
+  });
+
+  navigator.mediaSession.setActionHandler('play', onPlay);
+  navigator.mediaSession.setActionHandler('pause', onPause);
+  navigator.mediaSession.setActionHandler('nexttrack', onNext);
+  navigator.mediaSession.setActionHandler('previoustrack', onPrev);
+  navigator.mediaSession.setActionHandler('seekto', (details) => {
+    if (typeof details.seekTime === 'number') {
+      onSeek(details.seekTime);
+    }
+  });
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => {
@@ -124,17 +129,32 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       if (!globalAudio) return;
       const cur = globalAudio.currentTime || 0;
       const dur = globalAudio.duration || 1;
+      const prog = (cur / dur) * 100;
       set({
         currentTime: cur,
         duration: dur,
-        progress: (cur / dur) * 100,
+        progress: isFinite(prog) ? prog : 0,
       });
+    };
+
+    globalAudio.onplay = () => {
+      set({ isPlaying: true });
+      if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
+    };
+
+    globalAudio.onpause = () => {
+      set({ isPlaying: false });
+      if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused';
+      }
     };
   }
 
   const handlePlayNext = () => {
     const { queue, currentIndex, playTrack, isShuffled, repeatMode } = get();
-    if (queue.length === 0) return;
+    if (!queue || queue.length === 0) return;
 
     if (isShuffled) {
       const randomIndex = Math.floor(Math.random() * queue.length);
@@ -148,6 +168,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         playTrack(queue[0], queue);
       } else {
         set({ isPlaying: false });
+        if (globalAudio) globalAudio.pause();
       }
       return;
     }
@@ -157,10 +178,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
   const handlePlayPrev = () => {
     const { queue, currentIndex, playTrack } = get();
-    if (queue.length === 0) return;
+    if (!queue || queue.length === 0) return;
 
     const prevIndex = (currentIndex - 1 + queue.length) % queue.length;
     playTrack(queue[prevIndex], queue);
+  };
+
+  const handleSeek = (seconds: number) => {
+    if (!globalAudio) return;
+    const dur = globalAudio.duration || 1;
+    const clamped = Math.max(0, Math.min(seconds, dur));
+    globalAudio.currentTime = clamped;
+    set({ currentTime: clamped, progress: (clamped / dur) * 100 });
   };
 
   return {
@@ -179,37 +208,32 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     showQueue: false,
     showFullScreen: false,
 
-    toggleFullScreen: () => {
-      set((state) => ({ showFullScreen: !state.showFullScreen }));
-    },
-
-    setDuration: (duration: number) => {
-      set({ duration });
-    },
-
-    setIsPlaying: (isPlaying: boolean) => {
-      set({ isPlaying });
-    },
-
     playTrack: (rawSong: any, rawQueue: any[] = []) => {
-      if (!globalAudio || !rawSong) return;
+      if (!rawSong) return;
 
-      const song = sanitizeSong(rawSong);
-      const queue = rawQueue.length > 0 ? rawQueue.map(sanitizeSong) : [song];
-      const index = queue.findIndex((t) => t.id === song.id);
+      const song = normalizeSong(rawSong);
+      const queueList =
+        rawQueue && rawQueue.length > 0
+          ? rawQueue.map(normalizeSong)
+          : [song];
+      const index = queueList.findIndex((t) => t.id === song.id);
 
       set({
         currentTrack: song,
         isPlaying: true,
-        queue: queue,
+        queue: queueList,
         currentIndex: index !== -1 ? index : 0,
         progress: 0,
         currentTime: 0,
       });
 
-      if (song.downloadUrl) {
-        globalAudio.src = song.downloadUrl;
-        globalAudio.play().catch((err) => console.error("Audio playback error:", err));
+      if (globalAudio && song.downloadUrl) {
+        if (globalAudio.src !== song.downloadUrl) {
+          globalAudio.src = song.downloadUrl;
+        }
+        globalAudio
+          .play()
+          .catch((err) => console.warn('Audio playback error:', err));
       }
 
       syncMediaSession(
@@ -217,13 +241,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         () => get().togglePlay(),
         () => get().togglePlay(),
         () => handlePlayNext(),
-        () => handlePlayPrev()
+        () => handlePlayPrev(),
+        (time) => handleSeek(time)
       );
     },
 
     playQueue: (songs: any[], startIndex = 0) => {
       if (!songs || songs.length === 0) return;
-      const targetIndex = startIndex >= 0 && startIndex < songs.length ? startIndex : 0;
+      const targetIndex =
+        startIndex >= 0 && startIndex < songs.length ? startIndex : 0;
       get().playTrack(songs[targetIndex], songs);
     },
 
@@ -237,7 +263,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
           navigator.mediaSession.playbackState = 'paused';
         }
       } else {
-        globalAudio.play().catch((err) => console.error("Playback resume error:", err));
+        globalAudio
+          .play()
+          .catch((err) => console.warn('Playback resume error:', err));
         set({ isPlaying: true });
         if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
           navigator.mediaSession.playbackState = 'playing';
@@ -251,11 +279,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     playPrev: handlePlayPrev,
     prevTrack: handlePlayPrev,
 
-    seek: (seconds: number) => {
-      if (!globalAudio) return;
-      globalAudio.currentTime = seconds;
-      set({ currentTime: seconds });
-    },
+    seek: handleSeek,
 
     setVolume: (vol: number) => {
       const clamped = Math.max(0, Math.min(1, vol));
@@ -267,8 +291,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       if (!globalAudio) return;
       const { isMuted, volume } = get();
       if (isMuted) {
-        globalAudio.volume = volume || 0.5;
-        set({ isMuted: false });
+        const restoreVol = volume > 0 ? volume : 0.7;
+        globalAudio.volume = restoreVol;
+        set({ isMuted: false, volume: restoreVol });
       } else {
         globalAudio.volume = 0;
         set({ isMuted: true });
@@ -278,9 +303,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     setProgress: (prog: number) => {
       if (!globalAudio || !globalAudio.duration) return;
       const targetSec = (prog / 100) * globalAudio.duration;
-      globalAudio.currentTime = targetSec;
-      set({ progress: prog, currentTime: targetSec });
+      handleSeek(targetSec);
     },
+
+    setDuration: (dur: number) => set({ duration: dur }),
+    setIsPlaying: (playing: boolean) => set({ isPlaying: playing }),
 
     toggleRepeat: () => {
       const modes: RepeatMode[] = ['off', 'all', 'one'];
@@ -294,7 +321,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     },
 
     toggleQueue: () => {
-      set((state) => ({ isQueueOpen: !state.isQueueOpen }));
+      set((state) => ({
+        isQueueOpen: !state.isQueueOpen,
+        showQueue: !state.showQueue,
+      }));
+    },
+
+    toggleFullScreen: () => {
+      set((state) => ({ showFullScreen: !state.showFullScreen }));
     },
 
     clearQueue: () => {

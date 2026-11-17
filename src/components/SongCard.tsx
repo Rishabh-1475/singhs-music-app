@@ -1,59 +1,58 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { usePlayerStore } from '@/store/playerStore';
+import { DEFAULT_COVER } from '@/services/api';
 
 interface SongCardProps {
   song?: any;
   track?: any;
   allSongs?: any[];
-  tracks?: any[];
+  tracks?: any;
 }
 
 export default function SongCard({ song, track, allSongs, tracks }: SongCardProps) {
   const { playTrack, currentTrack, isPlaying, togglePlay } = usePlayerStore();
 
-  const activeSong = track || song;
-  const queue = tracks || allSongs || (activeSong ? [activeSong] : []);
+  const active = track || song;
+  const queue = tracks || allSongs || (active ? [active] : []);
 
-  const [imgSrc, setImgSrc] = useState(
-    activeSong?.albumArt || activeSong?.image || '/creator.jpg'
-  );
+  const [imgSrc, setImgSrc] = useState<string>('');
 
-  useEffect(() => {
-    if (activeSong) {
-      setImgSrc(activeSong.albumArt || activeSong.image || '/creator.jpg');
-    }
-  }, [activeSong]);
+  if (!active) return null;
 
-  if (!activeSong) return null;
-
-  const isCurrent = currentTrack?.id === activeSong.id;
+  const isCurrent = currentTrack?.id === active.id;
 
   const handleCardClick = () => {
     if (isCurrent) {
       togglePlay();
     } else {
-      playTrack(activeSong, queue);
+      playTrack(active, queue);
     }
   };
+
+  const currentDisplayImage =
+    imgSrc ||
+    active.albumArt ||
+    active.image ||
+    DEFAULT_COVER;
 
   return (
     <div
       onClick={handleCardClick}
-      className={`group relative p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-emerald-500/30 transition-all duration-300 cursor-pointer ${
+      className={`group relative p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-emerald-500/40 transition-all duration-300 cursor-pointer ${
         isCurrent
           ? isPlaying
-            ? 'ring-2 ring-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/20'
+            ? 'ring-2 ring-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/25 scale-[1.02]'
             : 'ring-1 ring-emerald-500/50 bg-emerald-500/5'
           : ''
       }`}
     >
-      <div className="relative aspect-square w-full rounded-xl overflow-hidden mb-3 bg-neutral-900 shadow-lg">
+      <div className="relative aspect-square w-full rounded-xl overflow-hidden mb-3 bg-neutral-900 shadow-md">
         <img
-          src={imgSrc}
-          alt={activeSong.name || activeSong.title || 'Track'}
-          onError={() => setImgSrc('/creator.jpg')}
+          src={currentDisplayImage}
+          alt={active.name || active.title || 'Track'}
+          onError={() => setImgSrc(DEFAULT_COVER)}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
           loading="lazy"
         />
@@ -82,10 +81,10 @@ export default function SongCard({ song, track, allSongs, tracks }: SongCardProp
             isCurrent ? 'text-emerald-400 font-bold' : 'text-white'
           }`}
         >
-          {activeSong.name || activeSong.title || 'Unknown Track'}
+          {active.name || active.title || 'Unknown Track'}
         </h4>
         <p className="text-xs text-neutral-400 truncate mt-0.5">
-          {activeSong.artist || activeSong.singers || 'SMC Music'}
+          {active.artist || active.singers || 'SMC Music'}
         </p>
       </div>
     </div>
