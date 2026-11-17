@@ -1,9 +1,9 @@
 import { Track, Artist } from '@/types/track';
 import { TRENDING_FALLBACK_TRACKS } from '@/data/tracks';
 import { getJioSaavnSong } from '@/lib/saavn';
-import { searchTracks, getSimilarSongs, extractHighResArtwork } from './api';
+import { searchTracks, searchSongs, getSimilarSongs, extractHighResArtwork } from './api';
 
-export { searchTracks, getSimilarSongs, extractHighResArtwork };
+export { searchTracks, searchSongs, getSimilarSongs, extractHighResArtwork };
 
 export interface MusicCategory {
   id: string;

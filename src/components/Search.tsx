@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Search as SearchIcon, X, Loader2, Music2 } from 'lucide-react';
 import Image from 'next/image';
 import { Track } from '@/types/track';
-import { searchTracks } from '@/services/api';
+import { searchSongs } from '@/services/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import { usePlayerStore } from '@/store/playerStore';
 
@@ -59,7 +59,7 @@ export default function Search({
 
       setIsLoading(true);
       try {
-        const fetched = await searchTracks(trimmed, 20);
+        const fetched = await searchSongs(trimmed);
         if (!isCancelled) {
           setResults(fetched);
           if (onResults) onResults(fetched);

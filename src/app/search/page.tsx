@@ -11,7 +11,7 @@ import { Track } from '@/types/track';
 import { usePlayerStore } from '@/store/playerStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { TRENDING_FALLBACK_TRACKS } from '@/data/tracks';
-import { searchTracks } from '@/services/musicService';
+import { searchSongs } from '@/services/musicService';
 
 const BROWSE_GENRES = [
   { name: 'Bollywood & Hindi', query: 'Top Hindi Songs', color: 'from-orange-600 to-amber-700' },
@@ -50,7 +50,7 @@ export default function SearchPage() {
     setHasSearched(true);
 
     try {
-      const data = await searchTracks(searchQuery.trim(), 30);
+      const data = await searchSongs(searchQuery.trim());
       setResults(data && data.length > 0 ? data : TRENDING_FALLBACK_TRACKS);
     } catch (err) {
       console.error('Search error:', err);
