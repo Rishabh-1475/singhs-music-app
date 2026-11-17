@@ -38,6 +38,13 @@ export async function fetchTrendingTracks(): Promise<Track[]> {
 export async function fetchCategories(): Promise<MusicCategory[]> {
   const categoryConfigs = [
     {
+      id: 'repeat',
+      title: 'On Repeat',
+      subtitle: 'Frequently played & trending chartbusters',
+      language: 'Trending',
+      query: 'Top Trending Hits Hindi English',
+    },
+    {
       id: 'workout',
       title: 'Gym / Workout',
       subtitle: 'High-BPM workout, Gym motivation & Punjabi hype',

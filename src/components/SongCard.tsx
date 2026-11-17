@@ -5,7 +5,6 @@ import Image from 'next/image';
 import { Play, Pause, Heart } from 'lucide-react';
 import { Track } from '@/types/track';
 import { usePlayerStore } from '@/store/playerStore';
-import { useAuthStore } from '@/store/authStore';
 import DownloadButton from './DownloadButton';
 import {
   isSongLiked,
@@ -23,9 +22,6 @@ export default function SongCard({ track, tracks }: SongCardProps) {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const playQueue = usePlayerStore((s) => s.playQueue);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
-  const user = useAuthStore((s) => s.user);
-  const openAuthModal = useAuthStore((s) => s.openAuthModal);
-  const showAuthToast = useAuthStore((s) => s.showAuthToast);
 
   const [liked, setLiked] = useState(false);
 
@@ -43,11 +39,6 @@ export default function SongCard({ track, tracks }: SongCardProps) {
 
   const handleLikeClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!user) {
-      showAuthToast('Sign in required to stream music and save playlists.');
-      openAuthModal();
-      return;
-    }
     const nextLiked = toggleSongLike(track);
     setLiked(nextLiked);
   };
@@ -59,11 +50,6 @@ export default function SongCard({ track, tracks }: SongCardProps) {
 
   const handlePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!user) {
-      showAuthToast('Sign in required to stream music and save playlists.');
-      openAuthModal();
-      return;
-    }
     if (isCurrent) {
       togglePlay();
     } else {

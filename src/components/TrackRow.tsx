@@ -5,7 +5,6 @@ import { Play, Pause, Heart } from 'lucide-react';
 import { Track } from '@/types/track';
 import { usePlayerStore } from '@/store/playerStore';
 import { useLibraryStore } from '@/store/libraryStore';
-import { useAuthStore } from '@/store/authStore';
 import { useState } from 'react';
 import DownloadButton from './DownloadButton';
 
@@ -35,9 +34,6 @@ export default function TrackRow({
   const togglePlay = usePlayerStore((s) => s.togglePlay);
   const toggleLike = useLibraryStore((s) => s.toggleLike);
   const isLiked = useLibraryStore((s) => s.isLiked);
-  const user = useAuthStore((s) => s.user);
-  const openAuthModal = useAuthStore((s) => s.openAuthModal);
-  const showAuthToast = useAuthStore((s) => s.showAuthToast);
   const [hovered, setHovered] = useState(false);
 
   const isCurrent = currentTrack?.id === track.id;
@@ -48,11 +44,6 @@ export default function TrackRow({
     'https://picsum.photos/seed/spotify-track/300/300';
 
   const handlePlay = () => {
-    if (!user) {
-      showAuthToast('Sign in required to stream music and save playlists.');
-      openAuthModal();
-      return;
-    }
     if (isCurrent) {
       togglePlay();
     } else {
@@ -143,11 +134,6 @@ export default function TrackRow({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (!user) {
-              showAuthToast('Sign in required to stream music and save playlists.');
-              openAuthModal();
-              return;
-            }
             toggleLike(track);
           }}
           className={`p-1 transition-colors ${

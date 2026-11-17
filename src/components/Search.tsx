@@ -7,7 +7,6 @@ import { Track } from '@/types/track';
 import { searchTracks } from '@/services/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import { usePlayerStore } from '@/store/playerStore';
-import { useAuthStore } from '@/store/authStore';
 
 export interface SearchProps {
   initialQuery?: string;
@@ -37,9 +36,6 @@ export default function Search({
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const playQueue = usePlayerStore((s) => s.playQueue);
-  const user = useAuthStore((s) => s.user);
-  const openAuthModal = useAuthStore((s) => s.openAuthModal);
-  const showAuthToast = useAuthStore((s) => s.showAuthToast);
 
   // Sync external initialQuery if updated
   useEffect(() => {
@@ -106,11 +102,6 @@ export default function Search({
   };
 
   const handleTrackClick = (track: Track, index: number) => {
-    if (!user) {
-      showAuthToast('Sign in required to stream music and save playlists.');
-      openAuthModal();
-      return;
-    }
     if (onSelectTrack) {
       onSelectTrack(track, results);
     } else {

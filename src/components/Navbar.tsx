@@ -8,16 +8,9 @@ import {
   X,
   CheckCircle2,
   ExternalLink,
-  LogIn,
-  LogOut,
-  User as UserIcon,
-  Heart,
-  ShieldCheck,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useState, useEffect, useRef } from 'react';
-import { useAuthStore } from '@/store/authStore';
-import AuthModal from './AuthModal';
 
 export interface NavbarProps {
   searchQuery?: string;
@@ -34,17 +27,8 @@ export default function Navbar({
   const pathname = usePathname();
 
   const [localQuery, setLocalQuery] = useState(externalQuery ?? '');
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
-
-  const user = useAuthStore((s) => s.user);
-  const isAuthModalOpen = useAuthStore((s) => s.isAuthModalOpen);
-  const openAuthModal = useAuthStore((s) => s.openAuthModal);
-  const closeAuthModal = useAuthStore((s) => s.closeAuthModal);
-  const signOut = useAuthStore((s) => s.signOut);
-  const userLikedSongs = useAuthStore((s) => s.userLikedSongs);
 
   // Sync external search query
   useEffect(() => {
@@ -59,28 +43,18 @@ export default function Navbar({
     }
   }, [externalQuery]);
 
-  // Sync isAuthOpen with global auth store
-  useEffect(() => {
-    if (isAuthModalOpen && !isAuthOpen) {
-      setIsAuthOpen(true);
-    }
-  }, [isAuthModalOpen, isAuthOpen]);
-
-  // Handle ESC key to close open modals
+  // Handle ESC key to close profile modal
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsProfileOpen(false);
-        setIsUserMenuOpen(false);
-        setIsAuthOpen(false);
-        closeAuthModal();
       }
     };
-    if (isProfileOpen || isUserMenuOpen || isAuthOpen) {
+    if (isProfileOpen) {
       window.addEventListener('keydown', handleKeyDown);
     }
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isProfileOpen, isUserMenuOpen, isAuthOpen, closeAuthModal]);
+  }, [isProfileOpen]);
 
   const handleInputChange = (val: string) => {
     setLocalQuery(val);
@@ -109,43 +83,47 @@ export default function Navbar({
 
   return (
     <>
-      <header className="sticky top-0 z-30 h-16 sm:h-20 bg-[#0D0F11]/90 backdrop-blur-md px-4 sm:px-8 flex items-center justify-between text-white border-b border-[#22262F] select-none gap-3 sm:gap-4">
-        {/* Left: History Navigation Buttons & Search Input */}
-        <div className="flex items-center gap-3 sm:gap-4 flex-1 max-w-2xl">
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <button
-              onClick={() => router.back()}
-              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#16191E] border border-[#22262F] flex items-center justify-center text-neutral-300 hover:text-white hover:border-neutral-500 transition-colors cursor-pointer"
-              title="Go back"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <button
-              onClick={() => router.forward()}
-              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#16191E] border border-[#22262F] flex items-center justify-center text-neutral-300 hover:text-white hover:border-neutral-500 transition-colors cursor-pointer"
-              title="Go forward"
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
+      <header className="sticky top-0 z-30 flex h-16 sm:h-20 items-center justify-between gap-2.5 sm:gap-4 px-3 sm:px-6 bg-[#0D0F11]/90 backdrop-blur-xl border-b border-[#22262F] flex-shrink-0 select-none">
+        {/* Left: History Nav Arrows */}
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+          <button
+            onClick={() => router.back()}
+            className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-white/5 border border-white/5 text-neutral-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            title="Go back"
+            aria-label="Go back"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <button
+            onClick={() => router.forward()}
+            className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-white/5 border border-white/5 text-neutral-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            title="Go forward"
+            aria-label="Go forward"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
 
-          {/* Global Search Bar */}
-          <div className="relative flex-1 max-w-md">
+        {/* Center: Search Bar with 250ms Debounce */}
+        <div className="flex-1 max-w-xl mx-1 sm:mx-2">
+          <div className="relative flex items-center w-full">
             <Search
               size={16}
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400"
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none"
             />
             <input
               type="text"
               value={localQuery}
               onChange={(e) => handleInputChange(e.target.value)}
-              placeholder="Artists, songs, or podcasts..."
+              placeholder="Search songs, artists, or podcasts..."
               className="w-full bg-[#16191E] border border-[#22262F] hover:border-neutral-600 focus:border-[#1DB954] text-xs sm:text-sm text-white placeholder:text-neutral-500 rounded-full py-2.5 pl-9 pr-9 outline-none transition-colors shadow-inner font-medium"
             />
             {localQuery && (
               <button
                 onClick={handleClear}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white cursor-pointer"
+                title="Clear input"
+                aria-label="Clear input"
               >
                 <X size={15} />
               </button>
@@ -153,130 +131,14 @@ export default function Navbar({
           </div>
         </div>
 
-        {/* Right Action Area: Prominent Sign In Button & Creator Profile Badge */}
+        {/* Right Action Area: Enlarged 48px Creator Avatar with Glowing Emerald Ring */}
         <div className="flex items-center gap-2.5 sm:gap-3.5 flex-shrink-0">
-          {/* 1. AUTHENTICATION SECTION */}
-          {!user ? (
-            /* Unauthenticated: Explicit prominent Sign In / Join button */
-            <button
-              onClick={() => {
-                setIsAuthOpen(true);
-                openAuthModal();
-              }}
-              className="px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs shadow-lg shadow-emerald-500/20 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
-              title="Sign in with Google, Email, or Phone"
-            >
-              <LogIn size={15} />
-              <span>Sign In / Join</span>
-            </button>
-          ) : (
-            /* Authenticated: User Account Avatar / Dropdown Trigger */
-            <div className="relative">
-              <button
-                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                className="flex items-center gap-2 bg-[#16191E] border border-emerald-500/40 hover:border-emerald-400 px-2 sm:px-3 py-1.5 rounded-full shadow-md transition-all duration-200 cursor-pointer active:scale-95 group text-left"
-                title="Account menu"
-              >
-                {user.photoURL ? (
-                  <div className="relative w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden bg-neutral-800 border border-emerald-400 flex-shrink-0">
-                    <Image
-                      src={user.photoURL}
-                      alt={user.displayName || 'User'}
-                      fill
-                      className="object-cover"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center text-emerald-400 flex-shrink-0 font-bold text-xs">
-                    <UserIcon size={16} />
-                  </div>
-                )}
-
-                <div className="hidden lg:flex flex-col text-left pr-1 max-w-[120px]">
-                  <span className="text-xs font-bold text-white truncate">
-                    {user.displayName || (user.email ? user.email.split('@')[0] : 'Member')}
-                  </span>
-                  <span className="text-[10px] text-emerald-400 font-mono truncate">
-                    {user.email || user.phoneNumber || 'Authenticated'}
-                  </span>
-                </div>
-              </button>
-
-              {/* User Account Dropdown Modal */}
-              {isUserMenuOpen && (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute right-0 top-14 w-64 bg-neutral-900/95 border border-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl z-50 text-white animate-in zoom-in-95 duration-150"
-                >
-                  <div className="flex items-center gap-3 pb-3 border-b border-white/10">
-                    {user.photoURL ? (
-                      <div className="relative w-11 h-11 rounded-full overflow-hidden border border-emerald-400 flex-shrink-0">
-                        <Image
-                          src={user.photoURL}
-                          alt={user.displayName || 'User'}
-                          fill
-                          className="object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-11 h-11 rounded-full bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400">
-                        <UserIcon size={20} />
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold truncate text-white">
-                        {user.displayName || 'SMC Music Listener'}
-                      </p>
-                      <p className="text-xs text-neutral-400 truncate font-mono">
-                        {user.email || user.phoneNumber || 'User'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="py-3 space-y-2 text-xs">
-                    <div className="flex items-center justify-between text-neutral-300">
-                      <span className="flex items-center gap-1.5 text-neutral-400">
-                        <ShieldCheck size={14} className="text-emerald-400" />
-                        Auth UID:
-                      </span>
-                      <span className="font-mono text-[10px] text-neutral-400">
-                        {user.uid.slice(0, 10)}...
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-neutral-300">
-                      <span className="flex items-center gap-1.5 text-neutral-400">
-                        <Heart size={14} className="text-emerald-400 fill-emerald-400" />
-                        Synced Favorites:
-                      </span>
-                      <span className="font-bold text-emerald-400">
-                        {userLikedSongs.length} songs
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={async () => {
-                      await signOut();
-                      setIsUserMenuOpen(false);
-                    }}
-                    className="w-full mt-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 hover:bg-rose-500/25 transition-all font-bold text-xs cursor-pointer active:scale-95"
-                  >
-                    <LogOut size={14} />
-                    <span>Sign Out</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 2. CREATOR / FOUNDER SPOTLIGHT BADGE (48px Circle with Emerald Ring) */}
           <button
             onClick={() => setIsProfileOpen(true)}
             className="flex items-center gap-2.5 bg-[#16191E] border border-[#22262F] hover:border-emerald-500/50 hover:bg-[#1a1f26] px-2 sm:px-3 py-1.5 rounded-full shadow-md transition-all duration-200 cursor-pointer active:scale-95 group text-left"
             title="View Founder Profile"
           >
-            {/* 48px circle with glowing emerald ring */}
+            {/* 48px (w-12 h-12) Creator Avatar with Glowing Emerald Ring */}
             <div className="relative w-12 h-12 rounded-full overflow-hidden bg-neutral-800 border-2 border-emerald-400 shadow-lg shadow-emerald-500/25 flex-shrink-0 group-hover:border-emerald-300 transition-colors">
               <Image
                 src="/creator.jpg"
@@ -300,15 +162,6 @@ export default function Navbar({
           </button>
         </div>
       </header>
-
-      {/* Glassmorphic Auth Modal (Google, Email/Password, Phone OTP) */}
-      <AuthModal
-        isOpen={isAuthOpen}
-        onClose={() => {
-          setIsAuthOpen(false);
-          closeAuthModal();
-        }}
-      />
 
       {/* Interactive Glassmorphic Founder Profile Modal */}
       {isProfileOpen && (

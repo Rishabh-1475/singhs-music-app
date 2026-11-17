@@ -20,7 +20,6 @@ import {
   ArrowDownToLine,
 } from 'lucide-react';
 import { useLibraryStore } from '@/store/libraryStore';
-import { useAuthStore } from '@/store/authStore';
 import { useState, useEffect } from 'react';
 import { getDownloadedTracks, onOfflineTracksChange } from '@/services/offlineStorage';
 
@@ -29,9 +28,6 @@ export default function Sidebar() {
   const playlists = useLibraryStore((s) => s.playlists);
   const createPlaylist = useLibraryStore((s) => s.createPlaylist);
   const deletePlaylist = useLibraryStore((s) => s.deletePlaylist);
-  const user = useAuthStore((s) => s.user);
-  const openAuthModal = useAuthStore((s) => s.openAuthModal);
-  const showAuthToast = useAuthStore((s) => s.showAuthToast);
   const [showCreateInput, setShowCreateInput] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [isMounted, setIsMounted] = useState(false);
@@ -47,11 +43,6 @@ export default function Sidebar() {
   }, []);
 
   const handleCreate = () => {
-    if (!user) {
-      showAuthToast('Sign in required to stream music and save playlists.');
-      openAuthModal();
-      return;
-    }
     if (newPlaylistName.trim()) {
       createPlaylist(newPlaylistName.trim());
       setNewPlaylistName('');
@@ -60,11 +51,6 @@ export default function Sidebar() {
   };
 
   const handlePlusClick = () => {
-    if (!user) {
-      showAuthToast('Sign in required to stream music and save playlists.');
-      openAuthModal();
-      return;
-    }
     setShowCreateInput(!showCreateInput);
   };
 

@@ -6,7 +6,6 @@ import { ArrowDownToLine, Play, Pause, Trash2, Clock, HardDriveDownload } from '
 import TopNav from '@/components/TopNav';
 import FooterSignature from '@/components/FooterSignature';
 import { usePlayerStore } from '@/store/playerStore';
-import { useAuthStore } from '@/store/authStore';
 import { Track } from '@/types/track';
 import {
   getDownloadedTracks,
@@ -28,9 +27,6 @@ export default function DownloadsPage() {
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
-  const user = useAuthStore((s) => s.user);
-  const openAuthModal = useAuthStore((s) => s.openAuthModal);
-  const showAuthToast = useAuthStore((s) => s.showAuthToast);
 
   const loadOfflineTracks = useCallback(async () => {
     try {
@@ -61,11 +57,6 @@ export default function DownloadsPage() {
     playableTracks.some((t) => t.id === currentTrack?.id) && isPlaying;
 
   const handlePlayAll = () => {
-    if (!user) {
-      showAuthToast('Sign in required to stream music and save playlists.');
-      openAuthModal();
-      return;
-    }
     if (playableTracks.length === 0) return;
     if (isDownloadsPlaying) {
       togglePlay();
@@ -75,11 +66,6 @@ export default function DownloadsPage() {
   };
 
   const handlePlayTrack = (track: Track, index: number) => {
-    if (!user) {
-      showAuthToast('Sign in required to stream music and save playlists.');
-      openAuthModal();
-      return;
-    }
     if (currentTrack?.id === track.id) {
       togglePlay();
     } else {

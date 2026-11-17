@@ -15,6 +15,7 @@ import {
   ChevronRight,
   RefreshCw,
   Shuffle,
+  ArrowDownToLine,
 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import SongCard from '@/components/SongCard';
@@ -22,7 +23,6 @@ import FooterSignature from '@/components/FooterSignature';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { Track, Artist } from '@/types/track';
 import { usePlayerStore } from '@/store/playerStore';
-import { useAuthStore } from '@/store/authStore';
 import { TRENDING_FALLBACK_TRACKS } from '@/data/tracks';
 import { getTopArtists } from '@/services/recommendationService';
 import {
@@ -36,30 +36,33 @@ import {
 const SEED_POOL = [
   'Top Hindi',
   'Arijit Singh',
-  'Bollywood Romance',
-  'Punjabi Pop',
+  'Punjabi Hype',
   'Sidhu Moose Wala',
+  'Bollywood Lo-Fi',
   'AP Dhillon',
-  'Lo-Fi Beats',
-  'Workout Hype',
-  'Karan Aujla',
-  'Anirudh Ravichander',
-  'Diljit Dosanjh',
-  'Trending India',
 ];
 
 const MOOD_CATEGORIES = [
   {
     id: 'all',
-    title: 'All Moods',
-    label: 'All Hits',
+    title: 'All',
+    emoji: '✨',
     icon: Sparkles,
+  },
+  {
+    id: 'repeat',
+    title: 'On Repeat',
+    subtitle: 'Frequently played & trending hits',
+    query: 'Top Trending Hits Hindi English',
+    emoji: '🔥',
+    icon: Flame,
   },
   {
     id: 'workout',
     title: 'Gym / Workout',
     subtitle: 'High-BPM workout, Gym motivation & Punjabi hype',
     query: 'workout hindi gym punjabi',
+    emoji: '💪',
     icon: Flame,
   },
   {
@@ -67,14 +70,23 @@ const MOOD_CATEGORIES = [
     title: 'Deep Focus',
     subtitle: 'Lo-Fi, chill instrumental & ambient study tracks',
     query: 'lofi hindi chill acoustic',
+    emoji: '🎧',
     icon: Radio,
   },
   {
     id: 'podcasts',
-    title: 'Podcasts & Talk',
+    title: 'Podcasts',
     subtitle: 'Top Indian talk, stories & inspirational audio',
     query: 'podcast hindi talk stories audio',
+    emoji: '🎙️',
     icon: Clock,
+  },
+  {
+    id: 'offline',
+    title: 'Offline Vault',
+    subtitle: 'Downloaded music ready for 100% offline playback',
+    emoji: '📥',
+    icon: ArrowDownToLine,
   },
 ];
 
@@ -95,9 +107,6 @@ function HeroArtistPlayButton({ trendingTracks }: { trendingTracks: Track[] }) {
   const currentTrackArtist = usePlayerStore((s) => s.currentTrack?.artist);
   const playQueue = usePlayerStore((s) => s.playQueue);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
-  const user = useAuthStore((s) => s.user);
-  const openAuthModal = useAuthStore((s) => s.openAuthModal);
-  const showAuthToast = useAuthStore((s) => s.showAuthToast);
 
   const isHeroArtistPlaying = Boolean(
     currentTrackArtist &&
@@ -107,11 +116,6 @@ function HeroArtistPlayButton({ trendingTracks }: { trendingTracks: Track[] }) {
   );
 
   const handleHeroListenNow = () => {
-    if (!user) {
-      showAuthToast('Sign in required to stream music and save playlists.');
-      openAuthModal();
-      return;
-    }
     if (isHeroArtistPlaying) {
       togglePlay();
     } else {
@@ -410,19 +414,24 @@ export default function HomePage() {
         {/* Dynamic Mood Categories & Filter Pills */}
         <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-1 -mx-4 px-4 sm:mx-0 sm:px-0">
           {MOOD_CATEGORIES.map((mood) => {
-            const Icon = mood.icon;
             const isSelected = activeMood === mood.id;
             return (
               <button
                 key={mood.id}
-                onClick={() => setActiveMood(mood.id)}
+                onClick={() => {
+                  if (mood.id === 'offline') {
+                    router.push('/downloads');
+                  } else {
+                    setActiveMood(mood.id);
+                  }
+                }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold tracking-wide whitespace-nowrap transition-all duration-200 cursor-pointer shadow-sm ${
                   isSelected
                     ? 'bg-emerald-500 text-black shadow-emerald-500/25 scale-105'
                     : 'bg-[#16191E] text-neutral-300 hover:text-white border border-[#22262F] hover:border-neutral-500 hover:bg-[#1f242d]'
                 }`}
               >
-                <Icon size={14} className={isSelected ? 'text-black' : 'text-emerald-400'} />
+                <span>{mood.emoji}</span>
                 <span>{mood.title}</span>
               </button>
             );
