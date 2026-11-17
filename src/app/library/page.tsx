@@ -6,6 +6,7 @@ import { Plus, Trash2, Heart, Music, ArrowDownToLine } from 'lucide-react';
 import TopNav from '@/components/TopNav';
 import FooterSignature from '@/components/FooterSignature';
 import { useLibraryStore } from '@/store/libraryStore';
+import { useAuthStore } from '@/store/authStore';
 import { getDownloadedTracks, onOfflineTracksChange } from '@/services/offlineStorage';
 
 export default function LibraryPage() {
@@ -13,6 +14,9 @@ export default function LibraryPage() {
   const likedTrackIds = useLibraryStore((s) => s.likedTrackIds);
   const createPlaylist = useLibraryStore((s) => s.createPlaylist);
   const deletePlaylist = useLibraryStore((s) => s.deletePlaylist);
+  const user = useAuthStore((s) => s.user);
+  const openAuthModal = useAuthStore((s) => s.openAuthModal);
+  const showAuthToast = useAuthStore((s) => s.showAuthToast);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [isMounted, setIsMounted] = useState(false);
@@ -28,11 +32,25 @@ export default function LibraryPage() {
   }, []);
 
   const handleCreate = () => {
+    if (!user) {
+      showAuthToast('Sign in required to stream music and save playlists.');
+      openAuthModal();
+      return;
+    }
     if (newName.trim()) {
       createPlaylist(newName.trim());
       setNewName('');
       setShowCreate(false);
     }
+  };
+
+  const handleCreateClick = () => {
+    if (!user) {
+      showAuthToast('Sign in required to stream music and save playlists.');
+      openAuthModal();
+      return;
+    }
+    setShowCreate(!showCreate);
   };
 
   return (
@@ -54,7 +72,7 @@ export default function LibraryPage() {
           </div>
 
           <button
-            onClick={() => setShowCreate(!showCreate)}
+            onClick={handleCreateClick}
             className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#1DB954] text-black font-extrabold text-xs uppercase tracking-wider hover:scale-105 active:scale-95 transition-transform shadow-lg shadow-[#1DB954]/20"
           >
             <Plus size={16} />

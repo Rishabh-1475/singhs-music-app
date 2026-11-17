@@ -20,6 +20,7 @@ import {
   ArrowDownToLine,
 } from 'lucide-react';
 import { useLibraryStore } from '@/store/libraryStore';
+import { useAuthStore } from '@/store/authStore';
 import { useState, useEffect } from 'react';
 import { getDownloadedTracks, onOfflineTracksChange } from '@/services/offlineStorage';
 
@@ -28,6 +29,9 @@ export default function Sidebar() {
   const playlists = useLibraryStore((s) => s.playlists);
   const createPlaylist = useLibraryStore((s) => s.createPlaylist);
   const deletePlaylist = useLibraryStore((s) => s.deletePlaylist);
+  const user = useAuthStore((s) => s.user);
+  const openAuthModal = useAuthStore((s) => s.openAuthModal);
+  const showAuthToast = useAuthStore((s) => s.showAuthToast);
   const [showCreateInput, setShowCreateInput] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [isMounted, setIsMounted] = useState(false);
@@ -43,11 +47,25 @@ export default function Sidebar() {
   }, []);
 
   const handleCreate = () => {
+    if (!user) {
+      showAuthToast('Sign in required to stream music and save playlists.');
+      openAuthModal();
+      return;
+    }
     if (newPlaylistName.trim()) {
       createPlaylist(newPlaylistName.trim());
       setNewPlaylistName('');
       setShowCreateInput(false);
     }
+  };
+
+  const handlePlusClick = () => {
+    if (!user) {
+      showAuthToast('Sign in required to stream music and save playlists.');
+      openAuthModal();
+      return;
+    }
+    setShowCreateInput(!showCreateInput);
   };
 
   const menuLinks = [
@@ -172,7 +190,7 @@ export default function Sidebar() {
               PLAYLISTS
             </p>
             <button
-              onClick={() => setShowCreateInput(!showCreateInput)}
+              onClick={handlePlusClick}
               className="w-6 h-6 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] flex items-center justify-center text-zinc-300 hover:text-white transition-all shadow-sm hover:scale-105 active:scale-95"
               title="Create playlist"
             >

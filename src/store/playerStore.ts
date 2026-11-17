@@ -5,6 +5,17 @@ import {
   disableBackgroundMode,
   updateBackgroundModeSettings,
 } from '@/services/backgroundAudio';
+import { useAuthStore } from '@/store/authStore';
+
+function checkAuthGate(): boolean {
+  const user = useAuthStore.getState().user;
+  if (!user) {
+    useAuthStore.getState().showAuthToast('Sign in required to stream music and save playlists.');
+    useAuthStore.getState().openAuthModal();
+    return false;
+  }
+  return true;
+}
 
 interface PlayerState {
   currentTrack: Track | null;
@@ -71,11 +82,28 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   showFullScreen: false,
 
   setTrack: (track) => {
+    if (!checkAuthGate()) {
+      disableBackgroundMode();
+      set({ currentTrack: null, isPlaying: false, progress: 0, duration: 0 });
+      return;
+    }
     enableBackgroundMode(track);
     set({ currentTrack: track, isPlaying: true, progress: 0, duration: 0 });
   },
 
   playQueue: (tracks, startIndex = 0) => {
+    if (!checkAuthGate()) {
+      disableBackgroundMode();
+      set({
+        currentTrack: null,
+        isPlaying: false,
+        queue: [],
+        queueIndex: -1,
+        progress: 0,
+        duration: 0,
+      });
+      return;
+    }
     const { isShuffled } = get();
     const q = isShuffled ? shuffleArray(tracks) : tracks;
     const idx = isShuffled
@@ -105,6 +133,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   togglePlay: () => {
     const nextPlaying = !get().isPlaying;
     if (nextPlaying) {
+      if (!checkAuthGate()) {
+        disableBackgroundMode();
+        set({ isPlaying: false, currentTrack: null });
+        return;
+      }
       enableBackgroundMode(get().currentTrack);
     } else {
       disableBackgroundMode();
@@ -114,6 +147,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   setIsPlaying: (v) => {
     if (v) {
+      if (!checkAuthGate()) {
+        disableBackgroundMode();
+        set({ isPlaying: false, currentTrack: null });
+        return;
+      }
       enableBackgroundMode(get().currentTrack);
     } else {
       disableBackgroundMode();

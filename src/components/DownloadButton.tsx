@@ -9,6 +9,7 @@ import {
   isTrackDownloaded,
   onOfflineTracksChange,
 } from '@/services/offlineStorage';
+import { useAuthStore } from '@/store/authStore';
 
 interface DownloadButtonProps {
   track: Track;
@@ -25,6 +26,9 @@ export default function DownloadButton({
 }: DownloadButtonProps) {
   const [downloaded, setDownloaded] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const user = useAuthStore((s) => s.user);
+  const openAuthModal = useAuthStore((s) => s.openAuthModal);
+  const showAuthToast = useAuthStore((s) => s.showAuthToast);
 
   useEffect(() => {
     let isMounted = true;
@@ -46,6 +50,11 @@ export default function DownloadButton({
 
   const handleDownloadClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!user) {
+      showAuthToast('Sign in required to stream music and save playlists.');
+      openAuthModal();
+      return;
+    }
     if (isDownloading) return;
 
     if (downloaded) {

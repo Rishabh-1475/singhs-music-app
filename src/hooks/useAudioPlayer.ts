@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { usePlayerStore } from '@/store/playerStore';
 import { Track } from '@/types/track';
 import { searchTracks } from '@/services/musicService';
+import { useAuthStore } from '@/store/authStore';
 import { logTrackPlay } from '@/services/recommendationService';
 import {
   enableBackgroundMode,
@@ -106,6 +107,11 @@ export function useAudioPlayer() {
     const audioElement = audioRef.current;
 
     const handlePlay = () => {
+      if (!useAuthStore.getState().user) {
+        useAuthStore.getState().showAuthToast('Sign in required to stream music and save playlists.');
+        useAuthStore.getState().openAuthModal();
+        return;
+      }
       if (audioElement) {
         audioElement.play().catch(() => {});
       }
@@ -194,9 +200,32 @@ export function useAudioPlayer() {
     loggedPlayRef.current = null;
   }, [currentTrack?.id]);
 
+  const user = useAuthStore((s) => s.user);
+
+  // Mandatory Playback Auth-Wall: Halt audio & clear buffer if user is not authenticated
+  useEffect(() => {
+    if (!audio) return;
+    if (!user && (isPlaying || currentTrack)) {
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+      usePlayerStore.setState({ isPlaying: false, currentTrack: null });
+      disableBackgroundMode();
+    }
+  }, [user, audio, isPlaying, currentTrack]);
+
   // Load track seamlessly without reloading if URL matches, supporting offline Blob object URLs
   useEffect(() => {
     if (!audio || !currentTrack) return;
+
+    if (!user) {
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+      useAuthStore.getState().showAuthToast('Sign in required to stream music and save playlists.');
+      useAuthStore.getState().openAuthModal();
+      return;
+    }
 
     // Revoke previous blob object URL to prevent memory leaks
     if (currentBlobUrlRef.current) {
@@ -238,19 +267,28 @@ export function useAudioPlayer() {
         currentBlobUrlRef.current = null;
       }
     };
-  }, [audio, currentTrack]);
+  }, [audio, currentTrack, user]);
 
   // Play/Pause
   useEffect(() => {
     if (!audio || !currentTrack) return;
     if (isPlaying) {
+      if (!user) {
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+        usePlayerStore.setState({ isPlaying: false, currentTrack: null });
+        useAuthStore.getState().showAuthToast('Sign in required to stream music and save playlists.');
+        useAuthStore.getState().openAuthModal();
+        return;
+      }
       audio.play().catch(() => {
         /* Autoplay blocked */
       });
     } else {
       audio.pause();
     }
-  }, [audio, isPlaying, currentTrack]);
+  }, [audio, isPlaying, currentTrack, user]);
 
   // Volume
   useEffect(() => {

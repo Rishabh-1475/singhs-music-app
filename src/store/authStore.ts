@@ -1,33 +1,53 @@
 'use client';
 
 import { create } from 'zustand';
-import { User, onAuthChange, logoutUser } from '@/lib/firebase';
+import { User, onAuthChange, logoutUser, registerUserSecurely } from '@/lib/firebase';
 import { Track } from '@/types/track';
 
 interface AuthState {
   user: User | null;
   isLoading: boolean;
   isAuthModalOpen: boolean;
+  toastMessage: string | null;
   userLikedSongs: Track[];
   openAuthModal: () => void;
   closeAuthModal: () => void;
+  showAuthToast: (msg: string) => void;
+  clearAuthToast: () => void;
   setUser: (user: User | null) => void;
   signOut: () => Promise<void>;
   syncUserLikedSongs: (uid: string) => void;
 }
 
+let toastTimeout: NodeJS.Timeout | null = null;
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
   isAuthModalOpen: false,
+  toastMessage: null,
   userLikedSongs: [],
 
   openAuthModal: () => set({ isAuthModalOpen: true }),
   closeAuthModal: () => set({ isAuthModalOpen: false }),
 
+  showAuthToast: (msg: string) => {
+    if (toastTimeout) clearTimeout(toastTimeout);
+    set({ toastMessage: msg });
+    toastTimeout = setTimeout(() => {
+      set({ toastMessage: null });
+    }, 4500);
+  },
+
+  clearAuthToast: () => {
+    if (toastTimeout) clearTimeout(toastTimeout);
+    set({ toastMessage: null });
+  },
+
   setUser: (user) => {
     set({ user, isLoading: false });
     if (user?.uid) {
+      registerUserSecurely(user).catch(() => {});
       get().syncUserLikedSongs(user.uid);
     }
   },

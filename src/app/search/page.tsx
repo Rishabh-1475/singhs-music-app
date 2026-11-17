@@ -10,6 +10,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { Track } from '@/types/track';
 import { usePlayerStore } from '@/store/playerStore';
 import { useLibraryStore } from '@/store/libraryStore';
+import { useAuthStore } from '@/store/authStore';
 import { TRENDING_FALLBACK_TRACKS } from '@/data/tracks';
 import { searchTracks } from '@/services/musicService';
 
@@ -112,8 +113,16 @@ export default function SearchPage() {
 
   const isTopPlaying =
     topResult && currentTrack?.id === topResult.id && isPlaying;
+  const user = useAuthStore((s) => s.user);
+  const openAuthModal = useAuthStore((s) => s.openAuthModal);
+  const showAuthToast = useAuthStore((s) => s.showAuthToast);
 
   const handlePlayTopResult = () => {
+    if (!user) {
+      showAuthToast('Sign in required to stream music and save playlists.');
+      openAuthModal();
+      return;
+    }
     if (!topResult) return;
     if (isTopPlaying) {
       togglePlay();

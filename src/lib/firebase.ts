@@ -13,6 +13,13 @@ import {
   User,
   Auth,
 } from 'firebase/auth';
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  serverTimestamp,
+  Firestore,
+} from 'firebase/firestore';
 
 // Standard Firebase Configuration with demo/fallback config
 const firebaseConfig = {
@@ -27,8 +34,37 @@ const firebaseConfig = {
 // Initialize Firebase App defensively (handles SSR & hot reloads)
 const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Initialize Auth
+// Initialize Auth & Firestore
 export const auth: Auth = getAuth(app);
+export const db: Firestore = getFirestore(app);
+
+/**
+ * Ingest authenticated user record into private admin Firestore collection 'smc_registered_users'
+ */
+export async function registerUserSecurely(user: any): Promise<void> {
+  if (!user?.uid) return;
+  try {
+    const userRef = doc(db, 'smc_registered_users', user.uid);
+    await setDoc(
+      userRef,
+      {
+        uid: user.uid,
+        displayName: user.displayName || 'SMC Listener',
+        email: user.email || null,
+        phoneNumber: user.phoneNumber || null,
+        photoURL: user.photoURL || null,
+        providerId: user.providerData?.[0]?.providerId || user.providerId || 'password',
+        createdAt: serverTimestamp(),
+        lastLoginAt: serverTimestamp(),
+        clientPlatform: 'Android / Web',
+        appVersion: '1.1.0',
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('Secure user registration recording error (handled):', err);
+  }
+}
 
 // Google Auth Provider
 export const googleProvider = new GoogleAuthProvider();

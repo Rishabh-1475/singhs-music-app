@@ -19,6 +19,7 @@ import {
   setupRecaptchaVerifier,
   sendPhoneOtp,
   verifyPhoneOtp,
+  registerUserSecurely,
 } from '@/lib/firebase';
 import { useAuthStore } from '@/store/authStore';
 import type { ConfirmationResult, RecaptchaVerifier } from 'firebase/auth';
@@ -33,6 +34,7 @@ export interface AuthModalProps {
 export default function AuthModal({ isOpen, onClose }: AuthModalProps = {}) {
   const storeIsOpen = useAuthStore((s) => s.isAuthModalOpen);
   const storeClose = useAuthStore((s) => s.closeAuthModal);
+  const toastMessage = useAuthStore((s) => s.toastMessage);
 
   const isModalOpen = isOpen !== undefined ? isOpen : storeIsOpen;
   const handleClose = useCallback(() => {
@@ -103,6 +105,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps = {}) {
     setErrorMessage(null);
     try {
       const user = await signInWithGoogle();
+      await registerUserSecurely(user);
       handleSuccess(`Welcome, ${user.displayName || user.email || 'Friend'}!`);
     } catch (err: unknown) {
       const error = err as { message?: string; code?: string };
@@ -141,9 +144,11 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps = {}) {
     try {
       if (isSignUp) {
         const user = await registerWithEmail(email, password);
+        await registerUserSecurely(user);
         handleSuccess(`Account created! Welcome, ${user.email}`);
       } else {
         const user = await loginWithEmail(email, password);
+        await registerUserSecurely(user);
         handleSuccess(`Signed in as ${user.email}`);
       }
     } catch (err: unknown) {
@@ -216,6 +221,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps = {}) {
     setIsLoading(true);
     try {
       const user = await verifyPhoneOtp(confirmationResult, otpCode.trim());
+      await registerUserSecurely(user);
       handleSuccess(`Verified! Welcome ${user.phoneNumber || 'User'}`);
     } catch (err: unknown) {
       const error = err as { code?: string; message?: string };
@@ -320,6 +326,14 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps = {}) {
             )}
           </button>
         </div>
+
+        {/* Gate Toast Notice */}
+        {toastMessage && (
+          <div className="mb-4 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
+            <ShieldCheck size={16} className="text-emerald-400 flex-shrink-0" />
+            <span className="font-semibold">{toastMessage}</span>
+          </div>
+        )}
 
         {/* Success Alert */}
         {successMessage && (

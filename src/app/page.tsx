@@ -22,6 +22,7 @@ import FooterSignature from '@/components/FooterSignature';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { Track, Artist } from '@/types/track';
 import { usePlayerStore } from '@/store/playerStore';
+import { useAuthStore } from '@/store/authStore';
 import { TRENDING_FALLBACK_TRACKS } from '@/data/tracks';
 import { getTopArtists } from '@/services/recommendationService';
 import {
@@ -64,6 +65,9 @@ function HeroArtistPlayButton({ trendingTracks }: { trendingTracks: Track[] }) {
   const currentTrackArtist = usePlayerStore((s) => s.currentTrack?.artist);
   const playQueue = usePlayerStore((s) => s.playQueue);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
+  const user = useAuthStore((s) => s.user);
+  const openAuthModal = useAuthStore((s) => s.openAuthModal);
+  const showAuthToast = useAuthStore((s) => s.showAuthToast);
 
   const isHeroArtistPlaying = Boolean(
     currentTrackArtist &&
@@ -73,6 +77,11 @@ function HeroArtistPlayButton({ trendingTracks }: { trendingTracks: Track[] }) {
   );
 
   const handleHeroListenNow = () => {
+    if (!user) {
+      showAuthToast('Sign in required to stream music and save playlists.');
+      openAuthModal();
+      return;
+    }
     if (isHeroArtistPlaying) {
       togglePlay();
     } else {

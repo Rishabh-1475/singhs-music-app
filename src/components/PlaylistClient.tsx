@@ -8,6 +8,7 @@ import TrackRow from '@/components/TrackRow';
 import FooterSignature from '@/components/FooterSignature';
 import { useLibraryStore } from '@/store/libraryStore';
 import { usePlayerStore } from '@/store/playerStore';
+import { useAuthStore } from '@/store/authStore';
 import { TRENDING_FALLBACK_TRACKS } from '@/data/tracks';
 import { useState, useMemo, useEffect } from 'react';
 import { Track } from '@/types/track';
@@ -29,6 +30,9 @@ export default function PlaylistClient() {
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
+  const user = useAuthStore((s) => s.user);
+  const openAuthModal = useAuthStore((s) => s.openAuthModal);
+  const showAuthToast = useAuthStore((s) => s.showAuthToast);
 
   const [showAddTrack, setShowAddTrack] = useState(false);
   const [addQuery, setAddQuery] = useState('');
@@ -66,6 +70,11 @@ export default function PlaylistClient() {
     tracks.some((t) => t.id === currentTrack?.id) && isPlaying;
 
   const handlePlayAll = () => {
+    if (!user) {
+      showAuthToast('Sign in required to stream music and save playlists.');
+      openAuthModal();
+      return;
+    }
     if (tracks.length === 0) return;
     if (isPlaylistPlaying) {
       togglePlay();
