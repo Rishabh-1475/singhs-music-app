@@ -7,6 +7,7 @@ import QueuePanel from './QueuePanel';
 import KeyboardShortcuts from './KeyboardShortcuts';
 import MobileBottomNav from './MobileBottomNav';
 import ErrorBoundary from './ErrorBoundary';
+import AuthModal from './AuthModal';
 
 export default function SpotifyShell({
   children,
@@ -46,6 +47,9 @@ export default function SpotifyShell({
 
       {/* Mobile Bottom Navigation (< 768px) */}
       <MobileBottomNav />
+
+      {/* Global Auth Modal */}
+      <AuthModal />
     </div>
   );
 }

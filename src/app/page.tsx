@@ -13,7 +13,7 @@ import {
   Heart,
   ChevronRight,
 } from 'lucide-react';
-import TopNav from '@/components/TopNav';
+import Navbar from '@/components/Navbar';
 import SongCard from '@/components/SongCard';
 import FooterSignature from '@/components/FooterSignature';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -232,7 +232,7 @@ export default function HomePage() {
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#0D0F11]">
       {/* Top Navbar */}
-      <TopNav />
+      <Navbar />
 
       {/* Main Scrollable Content */}
       <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 sm:py-6 pb-36 md:pb-20 space-y-8 sm:space-y-10 scroll-smooth">

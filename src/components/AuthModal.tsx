@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X,
   Mail,
@@ -25,9 +25,20 @@ import type { ConfirmationResult, RecaptchaVerifier } from 'firebase/auth';
 
 type AuthTab = 'google' | 'email' | 'phone';
 
-export default function AuthModal() {
-  const isAuthModalOpen = useAuthStore((s) => s.isAuthModalOpen);
-  const closeAuthModal = useAuthStore((s) => s.closeAuthModal);
+export interface AuthModalProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export default function AuthModal({ isOpen, onClose }: AuthModalProps = {}) {
+  const storeIsOpen = useAuthStore((s) => s.isAuthModalOpen);
+  const storeClose = useAuthStore((s) => s.closeAuthModal);
+
+  const isModalOpen = isOpen !== undefined ? isOpen : storeIsOpen;
+  const handleClose = useCallback(() => {
+    if (onClose) onClose();
+    storeClose();
+  }, [onClose, storeClose]);
 
   const [activeTab, setActiveTab] = useState<AuthTab>('google');
 
@@ -52,7 +63,7 @@ export default function AuthModal() {
 
   // Reset state when modal opens/closes
   useEffect(() => {
-    if (!isAuthModalOpen) {
+    if (!isModalOpen) {
       setErrorMessage(null);
       setSuccessMessage(null);
       setIsLoading(false);
@@ -62,26 +73,26 @@ export default function AuthModal() {
       setPassword('');
       setConfirmPassword('');
     }
-  }, [isAuthModalOpen]);
+  }, [isModalOpen]);
 
   // Handle ESC key to close
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isAuthModalOpen) {
-        closeAuthModal();
+      if (e.key === 'Escape' && isModalOpen) {
+        handleClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isAuthModalOpen, closeAuthModal]);
+  }, [isModalOpen, handleClose]);
 
-  if (!isAuthModalOpen) return null;
+  if (!isModalOpen) return null;
 
   const handleSuccess = (msg: string) => {
     setSuccessMessage(msg);
     setErrorMessage(null);
     setTimeout(() => {
-      closeAuthModal();
+      handleClose();
       setSuccessMessage(null);
     }, 1200);
   };
@@ -222,7 +233,7 @@ export default function AuthModal() {
   return (
     <div
       onClick={(e) => {
-        if (e.target === e.currentTarget) closeAuthModal();
+        if (e.target === e.currentTarget) handleClose();
       }}
       className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
     >
@@ -235,7 +246,7 @@ export default function AuthModal() {
 
         {/* Top-Right Close Button */}
         <button
-          onClick={closeAuthModal}
+          onClick={handleClose}
           className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 flex items-center justify-center text-neutral-400 hover:text-white transition-colors cursor-pointer"
           title="Close modal"
           aria-label="Close modal"

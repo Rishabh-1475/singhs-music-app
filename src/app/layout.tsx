@@ -47,6 +47,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-[#0d0f11] text-white flex flex-col antialiased overflow-hidden selection:bg-[#1db954] selection:text-black">
+        {/* Global application shell hosting Navbar, Sidebar, Player, and AuthModal */}
         <SpotifyShell>{children}</SpotifyShell>
       </body>
     </html>
