@@ -35,6 +35,7 @@ export default function Search({
   const debouncedQuery = useDebounce(query, 250);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  const playTrack = usePlayerStore((s) => s.playTrack);
   const playQueue = usePlayerStore((s) => s.playQueue);
 
   // Sync external initialQuery if updated
@@ -105,7 +106,7 @@ export default function Search({
     if (onSelectTrack) {
       onSelectTrack(track, results);
     } else {
-      playQueue(results, index);
+      playTrack(track, results);
     }
     setIsOpen(false);
   };
@@ -123,7 +124,12 @@ export default function Search({
           value={query}
           autoFocus={autoFocus}
           onChange={(e) => {
-            setQuery(e.target.value);
+            const val = e.target.value;
+            setQuery(val);
+            if (!val.trim()) {
+              setResults([]);
+              if (onResults) onResults([]);
+            }
             setIsOpen(true);
           }}
           onFocus={() => setIsOpen(true)}

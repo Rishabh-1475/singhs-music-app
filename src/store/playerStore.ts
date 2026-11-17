@@ -22,6 +22,8 @@ if (typeof window !== 'undefined') {
   globalAudio.preload = 'auto';
 }
 
+export { globalAudio };
+
 export function syncMediaSession(
   song: Song,
   onPlay: () => void,
@@ -174,6 +176,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     repeatMode: 'off',
     isShuffled: false,
     isQueueOpen: false,
+    showQueue: false,
+    showFullScreen: false,
+
+    toggleFullScreen: () => {
+      set((state) => ({ showFullScreen: !state.showFullScreen }));
+    },
+
+    setDuration: (duration: number) => {
+      set({ duration });
+    },
+
+    setIsPlaying: (isPlaying: boolean) => {
+      set({ isPlaying });
+    },
 
     playTrack: (rawSong: any, rawQueue: any[] = []) => {
       if (!globalAudio || !rawSong) return;

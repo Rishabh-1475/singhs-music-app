@@ -23,8 +23,8 @@ import FooterSignature from '@/components/FooterSignature';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { Track, Artist } from '@/types/track';
 import { usePlayerStore } from '@/store/playerStore';
-import { TRENDING_FALLBACK_TRACKS } from '@/data/tracks';
 import { getTopArtists } from '@/services/recommendationService';
+import { getTrendingSongs } from '@/services/api';
 import {
   searchTracks,
   fetchCategories,
@@ -147,16 +147,39 @@ export default function HomePage() {
   const router = useRouter();
   const [categories, setCategories] = useState<CategoryData[]>([]);
   const [activeMood, setActiveMood] = useState<string>('all');
-  const [trendingTracks, setTrendingTracks] = useState<Track[]>(TRENDING_FALLBACK_TRACKS);
+  const [trendingTracks, setTrendingTracks] = useState<Track[]>([]);
+  const [recommendedTracks, setRecommendedTracks] = useState<Track[]>([]);
+  const [featured, setFeatured] = useState<Track[]>([]);
   const [artists, setArtists] = useState<Artist[]>([]);
   const [isLoadingArtists, setIsLoadingArtists] = useState(true);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
 
   // Recommendations state
-  const [recommendedTracks, setRecommendedTracks] = useState<Track[]>([]);
   const [recommendedSubtitle, setRecommendedSubtitle] = useState<string>('Personalized based on your taste');
   const [isLoadingRecs, setIsLoadingRecs] = useState<boolean>(true);
+
+  // Initial mount: load trending songs dynamically from JioSaavn V4
+  useEffect(() => {
+    let isMounted = true;
+    async function loadTrendingOnMount() {
+      try {
+        const initialSongs = await getTrendingSongs();
+        if (isMounted && initialSongs && initialSongs.length > 0) {
+          setTrendingTracks(initialSongs as unknown as Track[]);
+          setRecommendedTracks(initialSongs.slice(0, 12) as unknown as Track[]);
+          setFeatured(initialSongs.slice(0, 5) as unknown as Track[]);
+          setIsLoadingRecs(false);
+        }
+      } catch (e) {
+        console.warn('Initial trending fetch failed:', e);
+      }
+    }
+    loadTrendingOnMount();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Isolate playQueue so HomePage never re-renders when tracks change or play/pause toggles
   const playQueue = usePlayerStore((s) => s.playQueue);

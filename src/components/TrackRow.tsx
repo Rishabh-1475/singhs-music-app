@@ -38,10 +38,9 @@ export default function TrackRow({
 
   const isCurrent = currentTrack?.id === track.id;
   const liked = isLiked(track.id);
-  const imageSrc =
-    track.albumArt ||
-    track.artwork ||
-    'https://picsum.photos/seed/spotify-track/300/300';
+  const [imgSrc, setImgSrc] = useState(
+    track.albumArt || track.artwork || track.image || '/creator.jpg'
+  );
 
   const handlePlay = () => {
     if (isCurrent) {
@@ -91,10 +90,11 @@ export default function TrackRow({
         {/* Square Thumbnail */}
         <div className="relative h-11 w-11 flex-shrink-0 rounded-lg overflow-hidden bg-neutral-900 border border-[#22262F] shadow-sm">
           <Image
-            src={imageSrc}
+            src={imgSrc}
             alt={track.title}
             fill
             sizes="44px"
+            onError={() => setImgSrc('/creator.jpg')}
             className="object-cover"
           />
         </div>
